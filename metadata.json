@@ -1,0 +1,5 @@
+{
+  "name": "Veil Architecture Documentation",
+  "description": "Documentation viewer for the Veil architecture and system design",
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
