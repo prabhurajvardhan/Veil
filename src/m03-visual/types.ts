@@ -77,14 +77,37 @@ export interface RawVisualPrediction {
 }
 
 /**
+ * GGUF Model source artifacts for local Wllama/WASM/WebGPU inference
+ */
+export interface GGUFModelSource {
+  modelUrl: string; // e.g., localattention/ShowUI-2B-Q4_K_M-GGUF/resolve/main/showui-2b-q4_k_m.gguf
+  mmprojUrl: string; // e.g., ggml-org/Qwen2-VL-2B-Instruct-GGUF/resolve/main/mmproj-Qwen2-VL-2B-Instruct-Q8_0.gguf
+}
+
+/**
+ * Standard ShowUI-2B system prompts conforming to showlab/ShowUI-2B
+ */
+export const SHOWUI_GROUNDING_SYSTEM_PROMPT =
+  'Based on the screenshot of the page, I give a text description and you give its corresponding location. ' +
+  'The coordinate represents a clickable location [x, y] for an element, which is a relative coordinate on the screenshot, scaled from 0 to 1.';
+
+export const SHOWUI_NAVIGATION_SYSTEM_PROMPT =
+  'You are an assistant trained to navigate the web screen. Given a task instruction, a screen observation, and an action history sequence, ' +
+  "output the next action and wait for the next observation. Format the action as a dictionary with keys: {'action': 'ACTION_TYPE', 'value': 'element', 'position': [x,y]}. " +
+  'Position represents relative coordinates scaled from 0 to 1.';
+
+/**
  * Options for configuring ShowUI-2B visual grounding adapter
  */
 export interface ShowUIConfig {
+  modelFormat?: 'onnx' | 'gguf';
   modelPath?: string;
+  ggufSource?: GGUFModelSource;
   preferredBackend?: ExecutionBackend;
   fallbackBackends?: ExecutionBackend[];
   confidenceThreshold?: number; // Minimum confidence to accept (default: 0.25)
   defaultPointTargetSize?: number; // Pixel width/height if model returns a single point (default: 32)
+  systemPrompt?: string;
   backendStatus?: BackendStatus;
 }
 

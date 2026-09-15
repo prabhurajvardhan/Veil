@@ -9,20 +9,37 @@ import {
   BackendAllocationError,
   BackendStatus,
   ExecutionBackend,
+  GGUFModelSource,
   InvalidScreenshotError,
   ModelInferenceError,
   ONNXInferenceSession,
   ONNXSessionProvider,
   RawVisualPrediction,
   ScreenshotInput,
+  SHOWUI_GROUNDING_SYSTEM_PROMPT,
   ShowUIConfig,
   VisualElement,
   VisualEvidence,
 } from './types';
 
 export const DEFAULT_MODEL_PATH = 'models/showui-2b.onnx';
+export const DEFAULT_GGUF_MODEL_URL =
+  'https://huggingface.co/localattention/ShowUI-2B-Q4_K_M-GGUF/resolve/main/showui-2b-q4_k_m.gguf';
+export const DEFAULT_GGUF_MMPROJ_URL =
+  'https://huggingface.co/ggml-org/Qwen2-VL-2B-Instruct-GGUF/resolve/main/mmproj-Qwen2-VL-2B-Instruct-Q8_0.gguf';
 export const DEFAULT_CONFIDENCE_THRESHOLD = 0.25;
 export const DEFAULT_POINT_TARGET_SIZE = 32;
+
+export interface ResolvedShowUIConfig {
+  modelFormat: 'onnx' | 'gguf';
+  modelPath: string;
+  ggufSource: GGUFModelSource;
+  preferredBackend: ExecutionBackend;
+  fallbackBackends: ExecutionBackend[];
+  confidenceThreshold: number;
+  defaultPointTargetSize: number;
+  systemPrompt: string;
+}
 
 /**
  * Default session provider using WebGPU with WASM/CPU fallbacks
@@ -76,7 +93,7 @@ export class DefaultONNXSessionProvider implements ONNXSessionProvider {
  * ShowUI-2B Adapter for Local Visual Grounding
  */
 export class ShowUIAdapter {
-  private readonly config: Required<Omit<ShowUIConfig, 'backendStatus'>>;
+  private readonly config: ResolvedShowUIConfig;
   private readonly sessionProvider: ONNXSessionProvider;
   private backendStatus: BackendStatus;
   private session: ONNXInferenceSession | null = null;
@@ -88,11 +105,17 @@ export class ShowUIAdapter {
   ) {
     this.sessionProvider = sessionProvider ?? new DefaultONNXSessionProvider();
     this.config = {
+      modelFormat: config?.modelFormat ?? 'onnx',
       modelPath: config?.modelPath ?? DEFAULT_MODEL_PATH,
+      ggufSource: config?.ggufSource ?? {
+        modelUrl: DEFAULT_GGUF_MODEL_URL,
+        mmprojUrl: DEFAULT_GGUF_MMPROJ_URL,
+      },
       preferredBackend: config?.preferredBackend ?? 'webgpu',
       fallbackBackends: config?.fallbackBackends ?? ['wasm', 'cpu'],
       confidenceThreshold: config?.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD,
       defaultPointTargetSize: config?.defaultPointTargetSize ?? DEFAULT_POINT_TARGET_SIZE,
+      systemPrompt: config?.systemPrompt ?? SHOWUI_GROUNDING_SYSTEM_PROMPT,
     };
 
     this.backendStatus = config?.backendStatus ?? {
@@ -261,6 +284,13 @@ export class ShowUIAdapter {
       const results = await this.session.run(feeds);
       if (Array.isArray(results.predictions)) {
         return results.predictions as RawVisualPrediction[];
+      }
+      if (typeof results.output_text === 'string') {
+        const parser = new CoordinateParser({
+          viewport: screenshot.viewport,
+          defaultPointSize: this.config.defaultPointTargetSize,
+        });
+        return parser.parseTextResponse(results.output_text);
       }
       return [];
     } catch (err) {

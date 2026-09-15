@@ -56,6 +56,7 @@ export function createMockONNXSessionProvider(options?: {
   wasmSupported?: boolean;
   cpuSupported?: boolean;
   mockRunOutput?: RawVisualPrediction[];
+  mockTextOutput?: string;
   failOnCreate?: boolean;
 }) {
   const supportedBackends: Record<ExecutionBackend, boolean> = {
@@ -79,6 +80,11 @@ export function createMockONNXSessionProvider(options?: {
 
       return {
         run: async (_inputs: Record<string, unknown>) => {
+          if (options?.mockTextOutput !== undefined) {
+            return {
+              output_text: options.mockTextOutput,
+            };
+          }
           return {
             predictions: options?.mockRunOutput ?? [
               {
@@ -298,6 +304,43 @@ export async function runAllVisualGroundingTests(): Promise<{ passed: number; fa
     assertEqual(predictions.length, 2, 'Extracted 2 predictions from text');
     assertEqual(predictions[0].coordinates.length, 4, 'First is 4-coord bounding box');
     assertEqual(predictions[1].coordinates.length, 2, 'Second is 2-coord point');
+  });
+
+  await test('CoordinateParser parseTextResponse extracts ShowUI Python action dicts and standalone coordinates', () => {
+    const parser = new CoordinateParser({ viewport: { width: 1000, height: 1000, dpr: 1 } });
+
+    // Case A: ShowUI Navigation action dictionary with point position
+    const navText = "{'action': 'CLICK', 'value': None, 'position': [0.73, 0.21]}";
+    const navPredictions = parser.parseTextResponse(navText);
+    assertEqual(navPredictions.length, 1, 'Extracted 1 prediction from navigation dict');
+    assertEqual(navPredictions[0].label, 'CLICK', 'Action label is CLICK');
+    assertEqual(navPredictions[0].coordinates[0], 0.73, 'x coord 0.73');
+    assertEqual(navPredictions[0].coordinates[1], 0.21, 'y coord 0.21');
+
+    // Case B: ShowUI Navigation two-point bounding box
+    const selectText = "{'action': 'SELECT_TEXT', 'position': [[0.1, 0.2], [0.8, 0.9]]}";
+    const selectPredictions = parser.parseTextResponse(selectText);
+    assertEqual(selectPredictions.length, 1, 'Extracted 1 prediction from two-point box');
+    assertEqual(selectPredictions[0].label, 'SELECT_TEXT', 'Action label is SELECT_TEXT');
+    assertEqual(selectPredictions[0].coordinates.length, 4, '4-coord box');
+    assertEqual(selectPredictions[0].coordinates[0], 0.2, 'ymin 0.2');
+    assertEqual(selectPredictions[0].coordinates[1], 0.1, 'xmin 0.1');
+    assertEqual(selectPredictions[0].coordinates[2], 0.9, 'ymax 0.9');
+    assertEqual(selectPredictions[0].coordinates[3], 0.8, 'xmax 0.8');
+
+    // Case C: Official ShowUI Grounding format (raw coordinate pair string)
+    const rawPointText = "[0.73, 0.21]";
+    const rawPointPredictions = parser.parseTextResponse(rawPointText);
+    assertEqual(rawPointPredictions.length, 1, 'Extracted 1 prediction from raw point array');
+    assertEqual(rawPointPredictions[0].coordinates[0], 0.73, 'x coord 0.73');
+    assertEqual(rawPointPredictions[0].coordinates[1], 0.21, 'y coord 0.21');
+
+    // Case D: Convert parsed navigation prediction to valid BoundingBox
+    const bbox = parser.parsePredictionToBoundingBox(navPredictions[0]);
+    assertEqual(bbox.width, 32, 'Default point box width 32');
+    assertEqual(bbox.height, 32, 'Default point box height 32');
+    assertEqual(bbox.x, Math.round(730 - 16), 'Box x centered at 730');
+    assertEqual(bbox.y, Math.round(210 - 16), 'Box y centered at 210');
   });
 
   // --- Suite 3: Backend Negotiation & WebGPU Fallback ---
@@ -533,6 +576,26 @@ export async function runAllVisualGroundingTests(): Promise<{ passed: number; fa
     // Authentic confidence 0.8 is preserved without ungrounded arbitrary multipliers
     assertEqual(evidence.elements[0].confidence, 0.8, 'Authentic confidence preserved');
     assertEqual(adapter.getBackendStatus().isFallbackActive, true, 'Signals isFallbackActive to M06');
+  });
+
+  await test('executeGrounding correctly parses text response from VLM session', async () => {
+    const mock = createMockONNXSessionProvider({
+      mockTextOutput: "{'action': 'CLICK', 'value': None, 'position': [0.45, 0.65]}",
+    });
+
+    const adapter = new ShowUIAdapter(undefined, mock.provider);
+    const screenshot = createSampleScreenshot({
+      viewport: { width: 1000, height: 1000, dpr: 1 },
+    });
+    const evidence = await adapter.executeGrounding(screenshot);
+
+    assertEqual(evidence.source, 'ShowUI-2B', 'Source is ShowUI-2B');
+    assertEqual(evidence.elements.length, 1, 'Extracted 1 element from VLM text response');
+    assertEqual(evidence.elements[0].label, 'CLICK', 'Element label is CLICK');
+    assertEqual(evidence.elements[0].bbox.width, 32, 'Box width is 32');
+    assertEqual(evidence.elements[0].bbox.height, 32, 'Box height is 32');
+    assertEqual(evidence.elements[0].bbox.x, Math.round(450 - 16), 'Box x centered at 450');
+    assertEqual(evidence.elements[0].bbox.y, Math.round(650 - 16), 'Box y centered at 650');
   });
 
   // --- Suite 6: Offscreen Document Request & Response Protocol ---
