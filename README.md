@@ -1,35 +1,69 @@
 # VEIL — Engineering Operating System
 
-Welcome to the VEIL repository. This repository is the project's **engineering source of truth** and operates as a strict zero-knowledge navigation system for both human engineers and autonomous AI coding agents.
+VEIL is a privacy-first AI browser agent implemented primarily as a **Chrome Extension** using **Manifest V3** targeting **Google Chrome**.
 
-## 1. Core Principle
-Knowledge is progressively discovered. Do NOT attempt to read every file at once. Follow the exact navigation chains defined in your role and task documents.
+The **Chrome Extension is the product runtime**. The core VEIL agent operates directly through the browser-extension runtime to observe, parse, sanitize, validate, and execute actions within the user's browser. Cloud reasoning is a remote supporting subsystem, not the primary product runtime. The Chrome Extension maintains the local privacy boundary and the local execution authority.
 
-## 2. Employee Entry Point
-If you are a new AI or human employee, locate your **Employee Operating Manual** first. Your manual contains your role, scope boundaries, and exact instructions on how to find your tasks.
+> **CRITICAL ARCHITECTURAL BOUNDARY:**  
+> A standalone web application is **NOT** the product architecture. Web interfaces that exist in this repository (such as the architecture and privacy boundary viewer) are strictly auxiliary development tools and supporting interfaces. They must never replace the Chrome Extension as the product runtime.
 
-- [AI001: Core Orchestration Engineer](docs/employees/AI001.md)
-- [AI002: Browser Observation Engineer](docs/employees/AI002.md)
-- [AI003: Visual Perception Engineer](docs/employees/AI003.md)
-- [AI004: Structural Grounding Engineer](docs/employees/AI004.md)
-- [AI005: Perception Fusion Engineer](docs/employees/AI005.md)
-- [AI006: Privacy Classification Engineer](docs/employees/AI006.md)
-- [AI007: Sanitization & Redaction Engineer](docs/employees/AI007.md)
-- [AI008: Reasoning Gateway Engineer](docs/employees/AI008.md)
-- [AI009: Action Validation Engineer](docs/employees/AI009.md)
-- [AI010: Browser Execution Engineer](docs/employees/AI010.md)
+---
 
-## 3. Project Architecture (For Architects & Reviewers)
-*Do not read these unless your task explicitly requires them.*
+## 1. Documentation Authority Hierarchy
+When resolving technical questions or conflicts, strictly follow the authoritative hierarchy:
+```text
+Requirements (docs/requirements/REQUIREMENTS.md)
+       ↓
+Architecture (docs/architecture/ARCHITECTURE.md)
+       ↓
+System Design (docs/system-design/SYSTEM-DESIGN.md)
+       ↓
+Technical Decisions (DECISIONS.md)
+       ↓
+Module Registry (MODULES.md)
+       ↓
+Interface Contracts (INTERFACES.md)
+       ↓
+Task Registry & Task Specifications (TASKS.md, docs/tasks/T*.md)
+       ↓
+Employee Operating Manuals (docs/employees/AI*.md)
+       ↓
+Implementation Code (/src/*)
+```
+If a lower-level document conflicts with an upstream document, the upstream document is authoritative. Lower-level documents must be corrected rather than an engineer or agent inventing a workaround.
+
+---
+
+## 2. Progressive Knowledge Navigation
+Knowledge in VEIL is progressively discovered. Do NOT read every file at once. Follow the exact navigation chains defined in your role and task documents.
+
+---
+
+## 3. Employee Entry Point
+If you are a new AI or human employee, locate your **Employee Operating Manual** first. Your manual contains your role startup prompt, scope boundaries, and exact instructions on discovering your assigned work:
+
+- [AI001: Core Orchestration Engineer](docs/employees/AI001.md) — Extension Shell & Agent State Machine (M01)
+- [AI002: Browser Observation Engineer](docs/employees/AI002.md) — CDP Observation Manager (M02)
+- [AI003: Visual Perception Engineer](docs/employees/AI003.md) — Local Visual Grounding / ShowUI-2B (M03)
+- [AI004: Structural Grounding Engineer](docs/employees/AI004.md) — DOM/A11y Grounding & Targeted OCR (M04, M05)
+- [AI005: Perception Fusion Engineer](docs/employees/AI005.md) — Multi-modal Fusion & Target IDs (M06)
+- [AI006: Privacy Classification Engineer](docs/employees/AI006.md) — Local PII & Sensitivity Engine (M07)
+- [AI007: Sanitization & Redaction Engineer](docs/employees/AI007.md) — Screenshot Masking & DOM Redaction (M08)
+- [AI008: Reasoning Gateway Engineer](docs/employees/AI008.md) — Cloud LLM Network Gateway Client (M09)
+- [AI009: Action Validation Engineer](docs/employees/AI009.md) — Local Action Guard & Staleness Verifier (M10)
+- [AI010: Browser Execution Engineer](docs/employees/AI010.md) — CDP Trusted Input Event Executor (M11)
+
+---
+
+## 4. Architectural Specifications & Control
+*Consult these only when explicitly required by your task document:*
 - [Architecture Overview](docs/architecture/ARCHITECTURE.md)
 - [System Design](docs/system-design/SYSTEM-DESIGN.md)
-- [Privacy Boundary](docs/privacy/PRIVACY-BOUNDARY.md)
+- [Architectural Decisions Registry](DECISIONS.md)
 - [Module Registry](MODULES.md)
 - [Interface Contracts](INTERFACES.md)
+- [Privacy Boundary](docs/privacy/PRIVACY-BOUNDARY.md)
 - [Agent Loop & State Machine](docs/agent/STATE-MACHINE.md)
-
-## 4. Operational Control
-*Track progress, integration, and active work here.*
 - [Project Status Board](STATUS.md)
 - [Integration Milestones](INTEGRATION.md)
 - [Task Registry](TASKS.md)

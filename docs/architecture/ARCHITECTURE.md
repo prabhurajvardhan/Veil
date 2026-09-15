@@ -1,104 +1,184 @@
-# VEIL — Architecture
+# VEIL — Architecture Specification
 
-Status: DRAFT (PROPOSED).
+**Status:** FROZEN  
+**Purpose:** Authoritative definition of VEIL's platform, runtime boundaries, execution pipeline, and technology stack.
 
-## 1. What is VEIL?
-VEIL is a privacy-first AI browser agent implemented as a Chrome browser extension.
+---
 
-## 2. What problem does it solve?
-AI browser agents require context to act, but sending raw screenshots or DOM dumps to a cloud model exposes sensitive information (credentials, PII, financial data). VEIL solves this by understanding the page locally, sanitizing sensitive data on-device, and sending only a minimized, privacy-safe context to a remote reasoner.
+## 1. Product Identity & Platform Definition
 
-## 3. What is the system boundary?
-VEIL operates within the user's browser environment. The system boundary encapsulates the Chrome extension, the local on-device perception/privacy models, and the network interface used to communicate with the remote reasoning service. 
+**VEIL IS A BROWSER-EXTENSION-BASED AI AGENT.**
 
-## 4. What runs locally?
-- Chrome extension orchestration
-- Observation acquisition (Screenshot, DOM, A11y, Page Metadata)
-- Local visual perception (e.g., ShowUI-2B)
-- Targeted OCR
-- Perception fusion
-- Privacy detection and sanitization
-- Action validation
-- Browser execution
+- **PRIMARY PRODUCT RUNTIME:** Chrome Extension
+- **PRIMARY EXTENSION STANDARD:** Manifest V3 (MV3)
+- **PRIMARY TARGET:** Google Chrome (Desktop)
 
-## 5. What runs remotely?
-- The reasoning and planning model that proposes actions based on sanitized context.
+The **Chrome Extension is the actual VEIL product runtime**. The core VEIL agent operates directly inside the browser-extension environment rather than being implemented as a standalone web application.
 
-## 6. Why is the boundary placed there?
-The boundary ensures that **raw browser data remains on the user's device**. Sensitive data must be filtered locally before the network hop because after-the-fact cloud redaction is inherently insecure and violates the principle of least privilege.
+### Explicit Negative Boundaries (What VEIL Is NOT)
+VEIL is **NOT**:
+- A standalone web application.
+- A standard website with an AI backend.
+- A server-side browser automation system (e.g., hosted Selenium/Puppeteer farm).
+- A desktop application (Electron, native executable).
+- A cloud-only computer-use agent.
 
-## 7. Major Components (M01-M11)
+> **Auxiliary Interface Boundary:**  
+> A web-based interface (such as a developer dashboard, configuration surface, or the repository's architecture viewer) may exist **only** as a documented auxiliary component or supporting development tool. It must **never** replace the Chrome Extension as the product runtime.
 
-┌─────────────────────────────────────────────┐
-│              LOCAL TRUST BOUNDARY           │
-│                                             │
-│ M01 Browser Agent Core / Orchestrator       │
-│ M02 Observation Manager                     │
-│ M03 Local Visual Perception                 │
-│ M04 DOM / Accessibility Grounding           │
-│ M05 Targeted OCR                            │
-│ M06 Perception Fusion                       │
-│ M07 Local Privacy Engine                    │
-│ M08 Sanitization / Redaction                │
-│ M10 Local Action Guard                      │
-│ M11 Browser Executor                        │
-└──────────────────────┬──────────────────────┘
-                       │
-                SANITIZED DATA
-                       │
-                       ▼
-┌─────────────────────────────────────────────┐
-│              REMOTE BOUNDARY                │
-│                                             │
-│ M09 Remote Reasoner                         │
-└─────────────────────────────────────────────┘
+---
 
-## 8. What does each component own?
-- **M01 Browser Agent Core:** Owns the agent lifecycle and state machine orchestration.
-- **M02 Observation Manager:** Owns extraction of browser state (pixels, DOM).
-- **M03 Local Visual Perception:** Owns on-device visual grounding.
-- **M04 DOM/A11y Grounding:** Owns structural grounding and element identification.
-- **M05 Targeted OCR:** Owns text extraction from pixels when other methods fail.
-- **M06 Perception Fusion:** Owns the merging of visual, DOM, and OCR evidence.
-- **M07 Local Privacy Engine:** Owns the rules and detection of sensitive data.
-- **M08 Sanitization / Redaction:** Owns the transformation of data to make it safe.
-- **M09 Remote Reasoner:** Owns task planning and action proposal.
-- **M10 Local Action Guard:** Owns authorization and staleness validation of actions.
-- **M11 Browser Executor:** Owns the execution of approved actions in the browser.
+## 2. Core Architectural Partitioning
 
-## 9. What data flows between components?
-Browser Observation → Visual/DOM/OCR Evidence → Perception Fusion → Structured PerceptionResult → Privacy Assessment → Sanitized Observation → Reasoning Request → Action Proposal → Validated Action → Execution Result.
+The system partitions responsibilities across three distinct execution boundaries:
 
-## 10. What data is forbidden from crossing the network boundary?
-Raw screenshots, raw DOM/A11y trees, raw OCR, passwords, session tokens, cookies, unredacted PII, and any data marked as "unknown" or "uncertain" by the privacy engine.
+```text
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                           LOCAL TRUST BOUNDARY (Client)                           │
+│                                                                                   │
+│  ┌─────────────────────────────────┐      ┌────────────────────────────────────┐  │
+│  │   A. Chrome Extension Runtime   │      │       B. Browser/Page Context      │  │
+│  │                                 │      │                                    │  │
+│  │ • Background Service Worker     │ CDP  │ • Active Tab Web Pages             │  │
+│  │ • Extension Offscreen Document  ├─────►│ • DOM & Accessibility Trees        │  │
+│  │ • Local State Machine (M01)     │◄─────┤ • Rendered Viewport Pixels         │  │
+│  │ • Observation Manager (M02)     │      │ • Synthetic/Hardware Input Target  │  │
+│  │ • Visual Perception (M03)       │      └────────────────────────────────────┘  │
+│  │ • Structural Grounding (M04)    │                                              │
+│  │ • Targeted OCR (M05)            │                                              │
+│  │ • Perception Fusion (M06)       │                                              │
+│  │ • Privacy Classification (M07)  │                                              │
+│  │ • Masking & Sanitization (M08)  │                                              │
+│  │ • Action Validation Guard (M10) │                                              │
+│  │ • Browser Action Executor (M11) │                                              │
+│  └────────────────┬────────────────┘                                              │
+└───────────────────┼───────────────────────────────────────────────────────────────┘
+                    │ Network Boundary (Sanitized Data Only)
+                    ▼
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                     C. Remote Supporting System (Untrusted Cloud)                 │
+│                                                                                   │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐  │
+│  │ • Remote Reasoner Gateway Client (M09 - client side in Service Worker)      │  │
+│  │ • Cloud Reasoning & Planning Model (External Cloud Service)                 │  │
+│  │                                                                             │  │
+│  │ Authority: ADVISORY ONLY (Outputs declarative ActionProposal)               │  │
+│  │ Prohibited: NO direct browser access, NO execution authority, NO raw data   │  │
+│  └─────────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────────┘
+```
 
-## 11. Who has reasoning authority?
-**The Remote Reasoner (M09)** holds reasoning authority. It decides *how* to achieve the task.
+### Boundary Responsibilities:
 
-## 12. Who has execution authority?
-**The Local Action Guard (M10)** combined with the **Browser Executor (M11)** holds execution authority. The cloud is strictly a *proposer*.
+#### Boundary A: Chrome Extension Runtime (Local Trust Boundary)
+- **Host Context:** Extension Service Worker (`background.js`), Extension Offscreen Documents (for DOM/Canvas operations unavailable in Service Workers), and Extension Action Popup.
+- **Responsibilities:**
+  - Complete agent lifecycle and state machine coordination (M01).
+  - Raw observation orchestration via Chrome DevTools Protocol (`chrome.debugger`) (M02).
+  - Local on-device visual grounding via ShowUI-2B (M03).
+  - Local DOM/A11y tree parsing and local targeted OCR (M04, M05).
+  - Multi-modal perception fusion and stable target ID generation (M06).
+  - Deterministic, fail-closed privacy classification (M07).
+  - Irreversible visual canvas masking and DOM text redaction (M08).
+  - Local Action Guard staleness verification and target validation (M10).
+  - Trusted hardware event dispatching into the active tab via CDP (M11).
+  - Secure local credential resolution (swapping tokens immediately prior to execution).
 
-## 13. How does the closed-loop agent operate?
-OBSERVE → UNDERSTAND → PROTECT → REASON → VALIDATE → ACT → OBSERVE → VERIFY.
-The agent must verify if an action produced the intended effect before proceeding.
+#### Boundary B: Browser / Page Context
+- **Host Context:** Active web contents and render processes within Google Chrome tabs.
+- **Responsibilities:**
+  - Target application under automation (arbitrary websites, SPAs, internal portals).
+  - Standard DOM, Shadow DOM, Canvas, iframe structures.
+  - Receives trusted hardware input events dispatched by the Chrome Extension runtime via CDP (`Input.dispatchMouseEvent`, `Input.dispatchKeyEvent`).
 
-## 14. How does failure propagate?
-Failures (e.g., perception uncertainty, network timeout, stale action) propagate back to the orchestrator (M01). Uncertainty in privacy fails closed (blocks transmission). Stale actions are rejected and trigger re-observation. Prompt injection attempts are contained because the reasoner cannot execute directly.
+#### Boundary C: Cloud Reasoning Environment (Remote Supporting System)
+- **Host Context:** Remote cloud LLM API endpoint.
+- **Responsibilities:**
+  - High-level multi-step planning and decision-making over structured, sanitized observations.
+  - Generates strictly declarative `ActionProposal` objects.
+- **Strict Authority Limit:** The cloud reasoning system is strictly **advisory**. It possesses **zero direct browser access** and **zero execution authority**. It never receives raw screenshots, unmasked DOM text, or user credentials.
 
-## 15. How does privacy affect the architecture?
-Privacy is a hard structural constraint. Low compute or low confidence must reduce the agent's capability (halting the task or requesting help), not reduce privacy (leaking data).
+---
 
-## 16. Which components are replaceable?
-- M03 Local Visual Perception (ShowUI-2B is the current choice, but any compatible VLM/GUI model can be swapped in).
-- M09 Remote Reasoner (Any compatible LLM API can serve as the planner).
+## 3. End-to-End Conceptual Flow
 
-## 17. Which architectural principles are stable?
-- The Local Trust Boundary vs. Remote Boundary.
-- Reasoning Authority vs. Execution Authority separation.
-- Fail-closed privacy logic.
+The agent strictly executes the following closed loop:
 
-## 18. Which implementation choices are currently replaceable?
-- The specific vision model (ShowUI-2B).
-- The specific remote LLM.
-- The exact OCR library.
-- The transport protocol used between M08 and M09.
+```text
+USER
+  ↓ (Provides Task Goal via Extension UI)
+CHROME
+  ↓
+VEIL CHROME EXTENSION (M01 Orchestrator)
+  ↓
+LOCAL OBSERVATION / PERCEPTION / PRIVACY
+  [ M02: Capture Raw Observation via CDP ]
+  [ M03-M05: Extract Visual, DOM, OCR Evidence locally ]
+  [ M06: Fuse Multi-Modal Evidence into PerceptionResult ]
+  [ M07: Identify Sensitive Nodes (Fail-Closed) ]
+  [ M08: Apply Canvas Black-Box Masking & Text Redaction ]
+  ↓
+SANITIZED CONTEXT (SanitizedObservation)
+  ↓ (Encrypted Network Egress via Service Worker fetch)
+CLOUD REASONING (External Planning Model)
+  ↓ (Returns Declarative ActionProposal)
+LOCAL VALIDATION (M10 Action Guard)
+  [ Verifies freshness: observation age <= 2000ms ]
+  [ Verifies element existence & coordinate delta <= 5px via CDP DOM.getBoxModel ]
+  [ Injects secure local credentials if parameter token present ]
+  ↓
+BROWSER EXECUTION (M11 Executor)
+  [ Dispatches trusted OS-level CDP Input events ]
+  ↓
+RE-OBSERVATION & VERIFICATION (M02 & M01)
+  [ Evaluates page outcome against intended effect ]
+  ↓
+(Loop repeats until Goal Achieved or Aborted)
+```
+
+---
+
+## 4. Technology Stack Specification
+
+| Subsystem | Selected Technology | Status | Notes |
+|---|---|---|---|
+| **Product Format** | Chrome Extension | **FROZEN** | Primary product runtime. |
+| **Extension Standard** | Manifest V3 (MV3) | **FROZEN** | Service worker background architecture. |
+| **Target Browser** | Google Chrome (Desktop) | **FROZEN** | Chrome 116+ (supports `chrome.debugger` & Offscreen Documents). |
+| **Core Languages** | TypeScript / JavaScript | **FROZEN** | Strict type contracts across interfaces. |
+| **Build & Tooling** | Vite / esbuild / Tailwind CSS | **FROZEN** | Bundles background script and extension UI. |
+| **Browser Observation** | Chrome DevTools Protocol (`chrome.debugger`) | **FROZEN** | Direct CDP calls (`Page.captureScreenshot`, `DOM.getDocument`, `Accessibility.getFullAXTree`). |
+| **Browser Execution** | Chrome DevTools Protocol (`chrome.debugger`) | **FROZEN** | Hardware-level trusted events (`Input.dispatchMouseEvent`, `Input.dispatchKeyEvent`). |
+| **Local Visual AI** | ShowUI-2B via WebGPU / ONNX Runtime Web | **FROZEN** | Local on-device visual grounding. |
+| **Local OCR** | TBD — requires explicit architecture/system-design decision | **TBD** | Candidates: Tesseract.js / WebAssembly OCR. Must run locally without cloud egress. |
+| **Local Privacy Engine** | Regex PII filters + DOM role detectors | **FROZEN** | Fail-closed deterministic local classification. |
+| **Visual Sanitization** | HTML5 Canvas API in Offscreen Document | **FROZEN** | Overlays solid `#000000` rectangles over flagged bounding boxes. |
+| **Remote Reasoner** | Cloud LLM Service | **TBD** | Exact model provider/API is TBD. Gateway interface locked to `SanitizedObservation` -> `ActionProposal`. |
+
+---
+
+## 5. Documentation Authority Hierarchy
+
+To prevent ambiguity or engineering drift, all agents must adhere to the strict hierarchy of authority:
+
+```text
+1. Requirements (docs/requirements/REQUIREMENTS.md)
+       ↓
+2. Architecture (docs/architecture/ARCHITECTURE.md) [THIS DOCUMENT]
+       ↓
+3. System Design (docs/system-design/SYSTEM-DESIGN.md)
+       ↓
+4. Architectural Decisions (DECISIONS.md)
+       ↓
+5. Module Registry (MODULES.md)
+       ↓
+6. Interface Contracts (INTERFACES.md)
+       ↓
+7. Task Specifications (TASKS.md, docs/tasks/T*.md)
+       ↓
+8. Employee Operating Manuals (docs/employees/AI*.md)
+       ↓
+9. Implementation Code (/src/*)
+```
+
+Lower-level documents must strictly conform to higher-level documents. If a conflict arises, the higher-level document is authoritative and the lower-level document must be corrected.

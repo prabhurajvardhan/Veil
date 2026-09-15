@@ -1,0 +1,6 @@
+{
+  "name": "VEIL",
+  "description": "Privacy-first AI browser agent implemented as a Chrome Extension using Manifest V3.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
