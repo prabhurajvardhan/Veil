@@ -61,20 +61,14 @@ export class DefaultONNXSessionProvider implements ONNXSessionProvider {
       );
     }
 
-    // Return a structured inference session instance compatible with ONNX Runtime Web API
-    return {
-      run: async (inputs: Record<string, unknown>) => {
-        if (!inputs || Object.keys(inputs).length === 0) {
-          throw new ModelInferenceError('Inputs to ShowUI inference session cannot be empty');
-        }
-        return {
-          predictions: inputs.rawPredictions ?? [],
-        };
-      },
-      release: async () => {
-        // Session resource cleanup
-      },
-    };
+    // In accordance with Zero-Guessing Rule (AI003.md §19, §20) and T005 specifications,
+    // do not fabricate a fake session or mock predictions. If real ONNX model weights or
+    // ONNX Runtime Web library are missing, fail closed with a descriptive error.
+    throw new BackendAllocationError(
+      `ShowUI-2B model artifact or ONNX Runtime Web engine is not available at '${modelPath}'. ` +
+        `Real local inference cannot be initialized until ShowUI-2B ONNX model weights and onnxruntime-web runtime are provisioned.`,
+      { modelPath, backend }
+    );
   }
 }
 
@@ -105,7 +99,6 @@ export class ShowUIAdapter {
       activeBackend: this.config.preferredBackend,
       isWebGPUSupported: true,
       isFallbackActive: false,
-      degradedConfidenceFactor: 1.0,
     };
   }
 
@@ -138,8 +131,6 @@ export class ShowUIAdapter {
           activeBackend: backend,
           isWebGPUSupported: backend === 'webgpu' || (await this.sessionProvider.isBackendSupported('webgpu')),
           isFallbackActive: isFallback,
-          // When running on fallback backend (WASM/CPU), signal slightly degraded confidence (SYSTEM-DESIGN.md)
-          degradedConfidenceFactor: isFallback ? 0.85 : 1.0,
         };
 
         this.isInitialized = true;
@@ -198,10 +189,7 @@ export class ShowUIAdapter {
   /**
    * Execute visual grounding on the screenshot to detect UI interactables and bounding boxes
    */
-  public async executeGrounding(
-    screenshot: ScreenshotInput,
-    rawPredictionsOverride?: RawVisualPrediction[]
-  ): Promise<VisualEvidence> {
+  public async executeGrounding(screenshot: ScreenshotInput): Promise<VisualEvidence> {
     // 1. Strict Input Validation (Fail-closed)
     this.validateScreenshot(screenshot);
 
@@ -217,13 +205,7 @@ export class ShowUIAdapter {
     });
 
     // 4. Run Model Inference
-    let rawPredictions: RawVisualPrediction[];
-
-    if (rawPredictionsOverride) {
-      rawPredictions = rawPredictionsOverride;
-    } else {
-      rawPredictions = await this.runInference(screenshot);
-    }
+    const rawPredictions = await this.runInference(screenshot);
 
     // 5. Postprocess predictions into strict VisualEvidence format
     const elements: VisualElement[] = [];
@@ -237,17 +219,14 @@ export class ShowUIAdapter {
           continue;
         }
 
-        // Apply degraded confidence factor if operating on fallback backend
-        const calibratedConfidence = Math.min(
-          1.0,
-          Math.max(0.0, pred.confidence * this.backendStatus.degradedConfidenceFactor)
-        );
+        // Preserve authentic model confidence score without ungrounded scaling
+        const confidence = Math.min(1.0, Math.max(0.0, pred.confidence));
 
-        if (calibratedConfidence >= this.config.confidenceThreshold) {
+        if (confidence >= this.config.confidenceThreshold) {
           elements.push({
             bbox,
             label: pred.label || 'visual_element',
-            confidence: Number(calibratedConfidence.toFixed(3)),
+            confidence: Number(confidence.toFixed(3)),
           });
         }
       } catch {

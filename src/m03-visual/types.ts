@@ -61,7 +61,6 @@ export interface BackendStatus {
   activeBackend: ExecutionBackend;
   isWebGPUSupported: boolean;
   isFallbackActive: boolean;
-  degradedConfidenceFactor: number; // 1.0 for WebGPU, 0.8 for WASM/CPU fallback
 }
 
 /**

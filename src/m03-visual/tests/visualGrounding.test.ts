@@ -8,6 +8,7 @@ import { CoordinateParser } from '../coordinateParser';
 import {
   DEFAULT_CONFIDENCE_THRESHOLD,
   DEFAULT_MODEL_PATH,
+  DefaultONNXSessionProvider,
   ShowUIAdapter,
 } from '../modelAdapter';
 import {
@@ -312,7 +313,6 @@ export async function runAllVisualGroundingTests(): Promise<{ passed: number; fa
     assertEqual(status.activeBackend, 'webgpu', 'Active backend is webgpu');
     assertEqual(status.isWebGPUSupported, true, 'WebGPU marked supported');
     assertEqual(status.isFallbackActive, false, 'Fallback not active');
-    assertEqual(status.degradedConfidenceFactor, 1.0, 'Full confidence factor 1.0');
 
     const sessions = mock.getSessionsCreated();
     assertEqual(sessions.length, 1, 'Created one session');
@@ -335,10 +335,22 @@ export async function runAllVisualGroundingTests(): Promise<{ passed: number; fa
     assertEqual(status.activeBackend, 'wasm', 'Active backend fell back to wasm');
     assertEqual(status.isWebGPUSupported, false, 'WebGPU not supported');
     assertEqual(status.isFallbackActive, true, 'Fallback marked active');
-    assertEqual(status.degradedConfidenceFactor, 0.85, 'Degraded confidence factor applied');
 
     const sessions = mock.getSessionsCreated();
     assertEqual(sessions[0].backend, 'wasm', 'Session created with wasm');
+  });
+
+  await test('DefaultONNXSessionProvider fails closed when model weights or ONNX runtime are missing', async () => {
+    const defaultProvider = new DefaultONNXSessionProvider();
+    let threw = false;
+    try {
+      await defaultProvider.createSession(DEFAULT_MODEL_PATH, 'cpu');
+    } catch (err) {
+      threw = true;
+      assert(err instanceof BackendAllocationError, 'Throws BackendAllocationError on missing runtime/weights');
+      assert((err as Error).message.includes('not available'), 'Error explains missing assets');
+    }
+    assert(threw, 'Default provider must fail closed without inventing fake sessions');
   });
 
   await test('ShowUIAdapter throws BackendAllocationError when all backends fail', async () => {
@@ -501,7 +513,7 @@ export async function runAllVisualGroundingTests(): Promise<{ passed: number; fa
     assertEqual(evidence.elements[0].label, 'high_confidence_button', 'Retained correct element');
   });
 
-  await test('executeGrounding applies degraded confidence factor when fallback active', async () => {
+  await test('executeGrounding preserves authentic confidence and signals fallback in backendStatus', async () => {
     const mock = createMockONNXSessionProvider({
       webGPUSupported: false, // forces wasm fallback
       wasmSupported: true,
@@ -518,8 +530,9 @@ export async function runAllVisualGroundingTests(): Promise<{ passed: number; fa
     const screenshot = createSampleScreenshot();
     const evidence = await adapter.executeGrounding(screenshot);
 
-    // Base confidence is 0.8 * 0.85 = 0.68
-    assertEqual(evidence.elements[0].confidence, 0.68, 'Calibrated degraded confidence');
+    // Authentic confidence 0.8 is preserved without ungrounded arbitrary multipliers
+    assertEqual(evidence.elements[0].confidence, 0.8, 'Authentic confidence preserved');
+    assertEqual(adapter.getBackendStatus().isFallbackActive, true, 'Signals isFallbackActive to M06');
   });
 
   // --- Suite 6: Offscreen Document Request & Response Protocol ---

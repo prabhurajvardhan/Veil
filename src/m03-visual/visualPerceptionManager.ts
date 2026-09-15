@@ -8,7 +8,6 @@ import { ShowUIAdapter } from './modelAdapter';
 import {
   BackendStatus,
   ONNXSessionProvider,
-  RawVisualPrediction,
   ScreenshotInput,
   ShowUIConfig,
   VisualEvidence,
@@ -37,11 +36,8 @@ export class VisualPerceptionManager {
    * Primary entrypoint: Process a raw screenshot to generate VisualEvidence
    * conforming strictly to INTERFACES.md.
    */
-  public async processScreenshot(
-    screenshot: ScreenshotInput,
-    rawPredictionsOverride?: RawVisualPrediction[]
-  ): Promise<VisualEvidence> {
-    return this.adapter.executeGrounding(screenshot, rawPredictionsOverride);
+  public async processScreenshot(screenshot: ScreenshotInput): Promise<VisualEvidence> {
+    return this.adapter.executeGrounding(screenshot);
   }
 
   /**
