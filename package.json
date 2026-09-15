@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
     "lint": "tsc --noEmit",
-    "test": "tsx src/m02-observation/tests/runTests.ts && tsx src/m03-visual/tests/visualGrounding.test.ts && tsx src/m05-ocr/tests/runTests.ts && tsx src/m07-privacy/tests/runTests.ts && tsx src/m08-sanitization/tests/runTests.ts && tsx src/m09-reasoning/tests/runTests.ts && tsx src/m10-action-validation/tests/runTests.ts",
+    "test": "tsx src/m02-observation/tests/runTests.ts && tsx src/m03-visual/tests/visualGrounding.test.ts && tsx src/m05-ocr/tests/runTests.ts && tsx src/m07-privacy/tests/runTests.ts && tsx src/m08-sanitization/tests/runTests.ts && tsx src/m09-reasoning/tests/runTests.ts && tsx src/m10-action-validation/tests/runTests.ts && tsx src/m11-executor/tests/browserExecutor.test.ts && tsx src/m01-core/tests/runTests.ts",
     "preview": "vite preview"
   },
   "dependencies": {
