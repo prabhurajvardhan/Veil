@@ -7,4 +7,6 @@
 export * from './types';
 export * from './cdpSession';
 export * from './screenshotCapture';
+export * from './domCapture';
+export * from './a11yCapture';
 export * from './observationManager';

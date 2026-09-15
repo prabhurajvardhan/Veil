@@ -6,9 +6,15 @@
 
 import { CDPSession, CDPSessionOptions } from './cdpSession';
 import { captureScreenshot } from './screenshotCapture';
+import { captureDOMTree } from './domCapture';
+import { captureA11yTree } from './a11yCapture';
 import {
+  CDP,
   ChromeDebuggerAPI,
+  DOMCaptureOptions,
   ObservationError,
+  RawObservation,
+  RawObservationCaptureError,
   ScreenshotCaptureOptions,
   ScreenshotData,
 } from './types';
@@ -143,5 +149,76 @@ export class ObservationManager {
 
     // Capture screenshot adhering to INTERFACES.md
     return captureScreenshot(session, options);
+  }
+
+  /**
+   * Captures raw DOM tree of the target tab via CDP DOM.getDocument.
+   * Ensures debugger is attached and returns root CDP.DOM.Node.
+   */
+  public async captureDOM(
+    tabId: number,
+    options?: DOMCaptureOptions
+  ): Promise<CDP.DOM.Node> {
+    if (!tabId || tabId <= 0) {
+      throw new ObservationError(`Invalid tabId provided: ${tabId}`, 'INVALID_TAB_ID');
+    }
+
+    const session = await this.attach(tabId);
+    return captureDOMTree(session, options);
+  }
+
+  /**
+   * Captures raw Accessibility tree of the target tab via CDP Accessibility.getFullAXTree.
+   * Ensures debugger is attached and returns CDP.Accessibility.AXNode[].
+   */
+  public async captureA11y(tabId: number): Promise<CDP.Accessibility.AXNode[]> {
+    if (!tabId || tabId <= 0) {
+      throw new ObservationError(`Invalid tabId provided: ${tabId}`, 'INVALID_TAB_ID');
+    }
+
+    const session = await this.attach(tabId);
+    return captureA11yTree(session);
+  }
+
+  /**
+   * Captures composite RawObservation adhering strictly to INTERFACES.md.
+   * Simultaneously executes Page.captureScreenshot, DOM.getDocument, and
+   * Accessibility.getFullAXTree over the attached CDPSession.
+   * 
+   * Fails closed if any observation facet fails.
+   */
+  public async captureRawObservation(
+    tabId: number,
+    options?: ScreenshotCaptureOptions
+  ): Promise<RawObservation> {
+    if (!tabId || tabId <= 0) {
+      throw new ObservationError(`Invalid tabId provided: ${tabId}`, 'INVALID_TAB_ID');
+    }
+
+    const session = await this.attach(tabId);
+
+    try {
+      const [screenshot, dom_tree, a11y_tree] = await Promise.all([
+        captureScreenshot(session, options),
+        captureDOMTree(session),
+        captureA11yTree(session),
+      ]);
+
+      const observation: RawObservation = {
+        observation_id: generateObservationId(),
+        timestamp: Date.now(),
+        screenshot,
+        dom_tree,
+        a11y_tree,
+      };
+
+      return observation;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new RawObservationCaptureError(
+        `Failed to capture complete RawObservation for tab ${tabId}: ${message}`,
+        error
+      );
+    }
   }
 }

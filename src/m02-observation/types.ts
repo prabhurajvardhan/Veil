@@ -56,6 +56,28 @@ export interface ScreenshotCaptureOptions {
 }
 
 /**
+ * Options for CDP DOM.getDocument
+ */
+export interface DOMCaptureOptions {
+  depth?: number; // Must default to -1 for complete tree
+  pierce?: boolean; // Must default to true for Shadow DOM
+}
+
+/**
+ * Result structure from CDP DOM.getDocument
+ */
+export interface CDPGetDocumentResult {
+  root: CDP.DOM.Node;
+}
+
+/**
+ * Result structure from CDP Accessibility.getFullAXTree
+ */
+export interface CDPGetFullAXTreeResult {
+  nodes: CDP.Accessibility.AXNode[];
+}
+
+/**
  * CDP Layout metrics response from Page.getLayoutMetrics
  */
 export interface CDPLayoutMetrics {
@@ -148,3 +170,34 @@ export class ScreenshotCaptureError extends ObservationError {
     this.name = 'ScreenshotCaptureError';
   }
 }
+
+/**
+ * Error capturing DOM tree via CDP DOM.getDocument
+ */
+export class DOMCaptureError extends ObservationError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'DOM_CAPTURE_ERROR', details);
+    this.name = 'DOMCaptureError';
+  }
+}
+
+/**
+ * Error capturing Accessibility tree via CDP Accessibility.getFullAXTree
+ */
+export class A11yCaptureError extends ObservationError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'A11Y_CAPTURE_ERROR', details);
+    this.name = 'A11yCaptureError';
+  }
+}
+
+/**
+ * Error capturing composite RawObservation
+ */
+export class RawObservationCaptureError extends ObservationError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'RAW_OBSERVATION_CAPTURE_ERROR', details);
+    this.name = 'RawObservationCaptureError';
+  }
+}
+
