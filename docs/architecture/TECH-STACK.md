@@ -1,6 +1,6 @@
 # VEIL — Technology Stack Specification
 
-**Status:** FROZEN  
+**Status:** NOT FROZEN — V0 draft. Freeze state is authoritative only in `docs/freezes/ARCHITECTURE.md`; see ADR 008 in `DECISIONS.md`.
 **Authority:** Derived directly from `docs/architecture/ARCHITECTURE.md` and `DECISIONS.md`.
 
 ---
@@ -19,19 +19,19 @@
 
 | Subsystem | Component | Runtime Location | Frozen Technology | Status |
 |---|---|---|---|---|
-| **Product Runtime** | Extension Shell | Chrome Extension MV3 | Service Worker (`background.js`), Popup UI, Offscreen Document | **FROZEN** |
-| **Orchestration** | M01 Core Agent | Extension Service Worker | TypeScript State Machine | **FROZEN** |
-| **Observation** | M02 Observation Manager | Extension Service Worker | Chrome DevTools Protocol (`chrome.debugger` API) | **FROZEN** |
-| **Visual Perception** | M03 Local Visual AI | Extension Offscreen / WebGPU | ShowUI-2B via ONNX Runtime Web / WebGPU | **FROZEN** |
-| **Structural Grounding** | M04 DOM / A11y | Extension Service Worker / Offscreen | CDP DOM/A11y tree parser | **FROZEN** |
+| **Product Runtime** | Extension Shell | Chrome Extension MV3 | Service Worker (`background.js`), Popup UI, Offscreen Document | **BINDING** |
+| **Orchestration** | M01 Core Agent | Extension Service Worker | TypeScript State Machine | **BINDING** |
+| **Observation** | M02 Observation Manager | Extension Service Worker | Chrome DevTools Protocol (`chrome.debugger` API) | **BINDING** |
+| **Visual Perception** | M03 Local Visual AI | Extension Offscreen / WebGPU | ShowUI-2B via ONNX Runtime Web / WebGPU | **BINDING** |
+| **Structural Grounding** | M04 DOM / A11y | Extension Service Worker / Offscreen | CDP DOM/A11y tree parser | **BINDING** |
 | **Targeted OCR** | M05 Targeted OCR | Extension Offscreen Document | TBD — requires explicit architecture/system-design decision | **TBD** |
-| **Perception Fusion** | M06 Perception Fusion | Extension Service Worker | Pure TypeScript Fusion Engine (IoU + SHA-256 target IDs) | **FROZEN** |
-| **Privacy Engine** | M07 Privacy Engine | Extension Service Worker | Deterministic regex rules + DOM input type checks | **FROZEN** |
-| **Sanitization** | M08 Masking/Redaction | Extension Offscreen Document | HTML5 Canvas 2D API (`#000000` rects) + String scrub | **FROZEN** |
-| **Remote Reasoner Gateway** | M09 Client Gateway | Extension Service Worker | Native `fetch()` client transmitting `SanitizedObservation` | **FROZEN** |
+| **Perception Fusion** | M06 Perception Fusion | Extension Service Worker | Pure TypeScript Fusion Engine (IoU + SHA-256 target IDs) | **BINDING** |
+| **Privacy Engine** | M07 Privacy Engine | Extension Service Worker | Deterministic regex rules + DOM input type checks | **BINDING** |
+| **Sanitization** | M08 Masking/Redaction | Extension Offscreen Document | HTML5 Canvas 2D API (`#000000` rects) + String scrub | **BINDING** |
+| **Remote Reasoner Gateway** | M09 Client Gateway | Extension Service Worker | Native `fetch()` client transmitting `SanitizedObservation` | **BINDING** |
 | **Remote Reasoner Model** | External LLM | Remote Cloud Environment | Cloud Reasoning API (TBD — requires explicit selection) | **TBD** |
-| **Action Guard** | M10 Local Guard | Extension Service Worker | Freshness check + CDP `DOM.getBoxModel` validation | **FROZEN** |
-| **Browser Execution** | M11 Browser Executor | Extension Service Worker | CDP `Input.dispatchMouseEvent` & `Input.dispatchKeyEvent` | **FROZEN** |
+| **Action Guard** | M10 Local Guard | Extension Service Worker | Freshness check + CDP `DOM.getBoxModel` validation | **BINDING** |
+| **Browser Execution** | M11 Browser Executor | Extension Service Worker | CDP `Input.dispatchMouseEvent` & `Input.dispatchKeyEvent` | **BINDING** |
 
 ---
 

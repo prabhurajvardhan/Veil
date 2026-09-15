@@ -1,6 +1,6 @@
 # VEIL — Agent Loop
 
-Status: DRAFT (PROPOSED). VEIL is a **CLOSED-LOOP** agent. It does not operate on a simple "Observe once → Reason once → Execute once" paradigm.
+Status: DRAFT (PROPOSED). Conceptual pipeline-stage view. The **authoritative M01 state machine** is `docs/agent/STATE-MACHINE.md` (ADR 009); the stages below are pipeline concerns, not M01 state names. VEIL is a **CLOSED-LOOP** agent. It does not operate on a simple "Observe once → Reason once → Execute once" paradigm.
 
 ## 1. The Core Loop Stages
 

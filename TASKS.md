@@ -1,6 +1,6 @@
 # VEIL — Task Registry
 
-**Status:** FROZEN  
+**Status:** NOT FROZEN — V0 draft. Freeze state is authoritative only in `docs/freezes/`; task decomposition is gated by the upstream stage freezes (ADR 008 in `DECISIONS.md`).
 **Authority:** Derived from `docs/architecture/ARCHITECTURE.md` and `MODULES.md`.
 
 ---
@@ -15,11 +15,55 @@ All tasks indexed in this registry inherit the following mandatory architectural
 
 ---
 
-## 2. Active Tasks (DAG)
+## 2. Canonical Task States
+
+Task state is a **gated** property, not a scheduling preference. A task is `READY` only when every condition below is satisfied; otherwise it is `BLOCKED`.
+
+| State | Meaning |
+|---|---|
+| `BLOCKED` | At least one readiness condition is unmet. **Must not be started.** |
+| `READY` | Every readiness condition is met. May be started, and is the only startable state. |
+| `IN_PROGRESS` | Actively being implemented by the owner. |
+| `VALIDATED` | Implemented and locally tested against the task's acceptance criteria. |
+| `INTEGRATED` | Consumed successfully by its integration milestone. |
+
+### 2.1 Readiness Conditions (all required for `READY`)
+
+A task may be marked `READY` only if **all** of the following hold:
+
+1. **Freeze gates met.** Every upstream stage freeze required by `docs/engineering/WORKFLOW.md` §3 has been recorded in `docs/freezes/` (ADR 008).
+2. **Dependencies complete.** Every task listed in its Dependencies table has reached `INTEGRATED`.
+3. **Architecture resolved.** No unresolved architectural question bears on the task.
+4. **System design resolved.** The design detail the task implements is specified, not `TBD`.
+5. **Interfaces resolved.** Every input and output the task touches is defined in `INTERFACES.md`.
+6. **Technology resolved.** Every technology the task uses is named and decided (no `TBD`/`UNKNOWN` in the task's critical path).
+7. **File boundaries explicit.** The exact files to create and modify are enumerated, and forbidden paths are stated.
+8. **Acceptance criteria defined.** Objective, testable acceptance criteria exist in the task document.
+9. **Validation method defined.** The exact test framework, command, and test boundaries are stated.
+10. **Mandatory references present.** Every referenced document exists and contains the cited section.
+
+If any condition fails, the task state **must** be `BLOCKED`, with the failing condition recorded.
+
+### 2.2 Transition Rules
+
+- `BLOCKED → READY`: only when conditions 1–10 above are all satisfied. An owner may not promote a task by assuming a missing decision.
+- `READY → IN_PROGRESS`: on implementation start.
+- `IN_PROGRESS → BLOCKED`: immediately, if a prerequisite is discovered to be missing or non-functional.
+- `IN_PROGRESS → VALIDATED`: only after the task's Validation Procedure passes locally, with actual test output.
+- `VALIDATED → INTEGRATED`: only after the integration milestone's exit conditions (`INTEGRATION.md`) are met.
+- Promoting downstream tasks `BLOCKED → READY` is permitted only when **all** their dependencies are `INTEGRATED`.
+
+### 2.3 Note on Dependencies
+
+A dependency is a **real** data/artifact dependency, not a scheduling artefact. Naming a task in this registry does not grant its owner permission to begin it.
+
+---
+
+## 3. Active Tasks (DAG)
 
 | TASK ID | TASK NAME | OWNER | MODULE | DEPENDENCIES | STATE |
 |---|---|---|---|---|---|
-| [T001](docs/tasks/T001.md) | Implement Extension Shell | AI001 | M01 | None | READY |
+| [T001](docs/tasks/T001.md) | Implement Extension Shell | AI001 | M01 | None | BLOCKED |
 | [T002](docs/tasks/T002.md) | Implement Orchestrator State Machine | AI001 | M01 | T001 | BLOCKED |
 | [T003](docs/tasks/T003.md) | Implement Screenshot Capture | AI002 | M02 | T001 | BLOCKED |
 | [T004](docs/tasks/T004.md) | Implement DOM/A11y Capture | AI002 | M02 | T001 | BLOCKED |
@@ -37,8 +81,8 @@ All tasks indexed in this registry inherit the following mandatory architectural
 
 ---
 
-## 3. Execution Rules
+## 4. Execution Rules
 1. Only tasks with `STATE = READY` may be executed.
-2. An assigned task that is `BLOCKED` must not be started.
+2. An assigned task that is `BLOCKED` must not be started; see the readiness conditions in §2.
 3. Every task must be implemented strictly within its assigned module's allowed file paths.
 4. No task may alter architecture or interface contracts without an approved ADR.

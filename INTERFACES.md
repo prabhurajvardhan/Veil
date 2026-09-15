@@ -1,6 +1,6 @@
 # VEIL — Core Interfaces
 
-**Status:** FROZEN
+**Status:** NOT FROZEN — V0 draft (interface contracts PROPOSED). No freeze ledger record exists; per ADR 008 in `DECISIONS.md` these contracts are not frozen.
 **Purpose:** Defines the exact data structures passed between modules. Do not alter without an ADR.
 
 ## 1. RawObservation (M02 → M03, M04, M05)
