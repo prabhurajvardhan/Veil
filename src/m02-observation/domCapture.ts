@@ -5,7 +5,7 @@
  */
 
 import { CDPSession } from './cdpSession';
-import { CDP, CDPGetDocumentResult, DOMCaptureError, DOMCaptureOptions } from './types';
+import { CDPGetDocumentResult, DOMCaptureError, DOMCaptureOptions } from './types';
 
 /**
  * Validates that a node has the minimal structural properties of a CDP.DOM.Node.

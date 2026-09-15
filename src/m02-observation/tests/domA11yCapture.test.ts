@@ -10,7 +10,7 @@ import { captureA11yTree } from '../a11yCapture';
 import { ObservationManager, generateObservationId } from '../observationManager';
 import {
   A11yCaptureError,
-  CDP,
+ 
   DOMCaptureError,
   RawObservation,
   RawObservationCaptureError,
@@ -421,12 +421,12 @@ export async function runDomA11yTests(): Promise<{ passed: number; failed: numbe
     assertEqual(rawObs.screenshot.viewport.dpr, 2.0, 'viewport DPR is 2.0');
 
     // DOM facet (T004)
-    assertEqual(rawObs.dom_tree.nodeId, 1, 'dom_tree root is populated');
-    assertEqual(rawObs.dom_tree.nodeName, '#document', 'dom_tree root nodeName is #document');
+    assertEqual((rawObs.dom_tree as CDP.DOM.Node).nodeId, 1, 'dom_tree root is populated');
+    assertEqual((rawObs.dom_tree as CDP.DOM.Node).nodeName, '#document', 'dom_tree root nodeName is #document');
 
     // Accessibility facet (T004)
-    assertEqual(rawObs.a11y_tree.length, 2, 'a11y_tree has 2 AXNodes');
-    assertEqual(rawObs.a11y_tree[0].nodeId, 'ax-1', 'a11y_tree first node id matches');
+    assertEqual((rawObs.a11y_tree as CDP.Accessibility.AXNode[]).length, 2, 'a11y_tree has 2 AXNodes');
+    assertEqual((rawObs.a11y_tree as CDP.Accessibility.AXNode[])[0].nodeId, 'ax-1', 'a11y_tree first node id matches');
   });
 
   await test('captureRawObservation fails closed if DOM capture fails (never silently omitted)', async () => {
