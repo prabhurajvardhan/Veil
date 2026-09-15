@@ -26,9 +26,9 @@ All tasks indexed in this registry inherit the following mandatory architectural
 | [T005](docs/tasks/T005.md) | Implement Visual Grounding Adapter | AI003 | M03 | T003 | IN_PROGRESS |
 | [T006](docs/tasks/T006.md) | Implement DOM Evidence Extraction | AI004 | M04 | T004 | BLOCKED |
 | [T007](docs/tasks/T007.md) | Implement OCR Extraction | AI004 | M05 | T003 | READY |
-| [T008](docs/tasks/T008.md) | Implement Perception Fusion Logic | AI005 | M06 | T005, T006, T007 | BLOCKED |
-| [T009](docs/tasks/T009.md) | Implement Conflict Resolution & Confidence | AI005 | M06 | T008 | BLOCKED |
-| [T010](docs/tasks/T010.md) | Implement Privacy Classification Rules | AI006 | M07 | T009 | BLOCKED |
+| [T008](docs/tasks/T008.md) | Implement Perception Fusion Logic | AI005 | M06 | T005, T006, T007 | VALIDATED |
+| [T009](docs/tasks/T009.md) | Implement Conflict Resolution & Confidence | AI005 | M06 | T008 | VALIDATED |
+| [T010](docs/tasks/T010.md) | Implement Privacy Classification Rules | AI006 | M07 | T009 | READY |
 | [T011](docs/tasks/T011.md) | Implement Visual Masking & DOM Redaction | AI007 | M08 | T010 | BLOCKED |
 | [T012](docs/tasks/T012.md) | Implement Remote Reasoner Network Client | AI008 | M09 | T011 | BLOCKED |
 | [T013](docs/tasks/T013.md) | Implement Local Action Guard (Staleness & Validation) | AI009 | M10 | T012, T002 | BLOCKED |
