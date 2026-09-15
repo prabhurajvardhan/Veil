@@ -5,6 +5,8 @@
  */
 
 import { CoordinateParser } from '../coordinateParser';
+import { HuggingFaceProvider } from '../huggingFaceProvider';
+import { LocalONNXProvider } from '../localONNXProvider';
 import {
   DEFAULT_CONFIDENCE_THRESHOLD,
   DEFAULT_MODEL_PATH,
@@ -28,6 +30,7 @@ import {
   RawVisualPrediction,
   ScreenshotInput,
   VisualEvidence,
+  VisualInferenceProvider,
   VisualPerceptionError,
 } from '../types';
 import { VisualPerceptionManager } from '../visualPerceptionManager';
@@ -63,6 +66,7 @@ export function createMockONNXSessionProvider(options?: {
     webgpu: options?.webGPUSupported ?? true,
     wasm: options?.wasmSupported ?? true,
     cpu: options?.cpuSupported ?? true,
+    'hosted-huggingface': false,
   };
 
   const sessionsCreated: Array<{ modelPath: string; backend: ExecutionBackend }> = [];
@@ -681,6 +685,374 @@ export async function runAllVisualGroundingTests(): Promise<{ passed: number; fa
     assertEqual(mock.getReleasedCount(), 1, 'Released manager session');
   });
 
+  // --- Suite 8: Hugging Face Provider Configuration & Request Construction ---
+  console.log('\n[Suite 8: HuggingFaceProvider & Provider Abstraction]');
+
+  await test('HuggingFaceProvider initializes with sanitized config summary', () => {
+    const provider = new HuggingFaceProvider({
+      apiKey: 'hf_secret_token_12345',
+      endpointUrl: 'https://custom-router.example.com/models/showui',
+      modelName: 'showlab/ShowUI-2B',
+      timeoutMs: 15000,
+    });
+
+    assertEqual(provider.providerId, 'HuggingFaceHosted', 'Provider ID matches');
+    const summary = provider.getConfigSummary();
+    assertEqual(summary.endpointUrl, 'https://custom-router.example.com/models/showui', 'Endpoint URL matches');
+    assertEqual(summary.modelName, 'showlab/ShowUI-2B', 'Model name matches');
+    assertEqual(summary.timeoutMs, 15000, 'Timeout matches');
+    assertEqual(summary.hasApiKey, true, 'ApiKey presence reported');
+    assertEqual(summary.maskedApiKey, 'Bearer ***345', 'ApiKey is safely masked');
+  });
+
+  await test('HuggingFaceProvider validateScreenshot rejects missing or invalid inputs', () => {
+    const provider = new HuggingFaceProvider();
+
+    let threw = false;
+    try {
+      provider.validateScreenshot(null as unknown as ScreenshotInput);
+    } catch (err) {
+      threw = err instanceof InvalidScreenshotError;
+    }
+    assert(threw, 'Fails closed on null screenshot');
+
+    threw = false;
+    try {
+      provider.validateScreenshot({
+        format: 'unsupported' as unknown as 'png',
+        data: 'abc',
+        viewport: { width: 100, height: 100, dpr: 1 },
+      });
+    } catch (err) {
+      threw = err instanceof InvalidScreenshotError;
+    }
+    assert(threw, 'Fails closed on unsupported image format');
+
+    threw = false;
+    try {
+      provider.validateScreenshot({
+        format: 'png',
+        data: '   ',
+        viewport: { width: 100, height: 100, dpr: 1 },
+      });
+    } catch (err) {
+      threw = err instanceof InvalidScreenshotError;
+    }
+    assert(threw, 'Fails closed on empty Base64 data');
+  });
+
+  await test('LocalONNXProvider fails closed with BackendAllocationError when weights unprovisioned', async () => {
+    const localProvider = new LocalONNXProvider({
+      modelPath: 'models/showui-2b.onnx',
+    });
+
+    assertEqual(localProvider.providerId, 'LocalONNXWebGPU', 'Provider ID is LocalONNXWebGPU');
+
+    let threw = false;
+    try {
+      await localProvider.infer(createSampleScreenshot());
+    } catch (err) {
+      threw = err instanceof BackendAllocationError;
+    }
+    assert(threw, 'LocalONNXProvider fails closed rather than fabricating mock predictions');
+  });
+
+  await test('ShowUIAdapter seamlessly integrates with custom VisualInferenceProvider via DI', async () => {
+    const mockPredictions: RawVisualPrediction[] = [
+      {
+        coordinates: [0.2, 0.3, 0.4, 0.5],
+        label: 'custom_button',
+        confidence: 0.95,
+      },
+    ];
+
+    const customProvider: VisualInferenceProvider = {
+      providerId: 'CustomTestProvider',
+      isAvailable: async () => true,
+      infer: async () => mockPredictions,
+    };
+
+    const adapter = new ShowUIAdapter(undefined, customProvider);
+    assertEqual(adapter.getProvider().providerId, 'CustomTestProvider', 'Provider injected correctly');
+
+    const screenshot = createSampleScreenshot({
+      viewport: { width: 1000, height: 1000, dpr: 1 },
+    });
+    const evidence = await adapter.executeGrounding(screenshot);
+
+    assertEqual(evidence.source, 'ShowUI-2B', 'Evidence source is ShowUI-2B');
+    assertEqual(evidence.elements.length, 1, 'Extracted 1 element');
+    assertEqual(evidence.elements[0].label, 'custom_button', 'Label matches');
+    assertEqual(evidence.elements[0].bbox.x, 300, 'Normalized x is 300');
+    assertEqual(evidence.elements[0].bbox.y, 200, 'Normalized y is 200');
+  });
+
+  // --- Suite 9: Error Handling, HTTP Status Codes & Fail-Closed Parsing ---
+  console.log('\n[Suite 9: Error Handling & Fail-Closed Parsing]');
+
+  await test('HuggingFaceProvider handles 401 Unauthorized by throwing AUTHENTICATION_FAILURE', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => {
+        return new Response(JSON.stringify({ error: 'Unauthorized: Invalid API token' }), {
+          status: 401,
+          statusText: 'Unauthorized',
+          headers: { 'Content-Type': 'application/json' },
+        });
+      };
+
+      const provider = new HuggingFaceProvider({ apiKey: 'invalid_token' });
+      let caughtError: ModelInferenceError | null = null;
+
+      try {
+        await provider.infer(createSampleScreenshot());
+      } catch (err) {
+        if (err instanceof ModelInferenceError) {
+          caughtError = err;
+        }
+      }
+
+      assert(caughtError !== null, 'Throws ModelInferenceError on 401');
+      assertEqual(
+        (caughtError?.details as { reason?: string })?.reason,
+        'AUTHENTICATION_FAILURE',
+        'Reason is AUTHENTICATION_FAILURE'
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  await test('HuggingFaceProvider handles 503 Endpoint Unavailable by throwing ENDPOINT_UNAVAILABLE', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => {
+        return new Response(JSON.stringify({ error: 'Model is currently loading' }), {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'application/json' },
+        });
+      };
+
+      const provider = new HuggingFaceProvider();
+      let caughtError: ModelInferenceError | null = null;
+
+      try {
+        await provider.infer(createSampleScreenshot());
+      } catch (err) {
+        if (err instanceof ModelInferenceError) {
+          caughtError = err;
+        }
+      }
+
+      assert(caughtError !== null, 'Throws ModelInferenceError on 503');
+      assertEqual(
+        (caughtError?.details as { reason?: string })?.reason,
+        'ENDPOINT_UNAVAILABLE',
+        'Reason is ENDPOINT_UNAVAILABLE'
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  await test('HuggingFaceProvider handles network failure by throwing NETWORK_FAILURE', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => {
+        throw new TypeError('Failed to fetch: Network connection refused');
+      };
+
+      const provider = new HuggingFaceProvider();
+      let caughtError: ModelInferenceError | null = null;
+
+      try {
+        await provider.infer(createSampleScreenshot());
+      } catch (err) {
+        if (err instanceof ModelInferenceError) {
+          caughtError = err;
+        }
+      }
+
+      assert(caughtError !== null, 'Throws ModelInferenceError on network error');
+      assertEqual(
+        (caughtError?.details as { reason?: string })?.reason,
+        'NETWORK_FAILURE',
+        'Reason is NETWORK_FAILURE'
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  await test('HuggingFaceProvider handles timeout by throwing INFERENCE_TIMEOUT', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => {
+        const domException = new DOMException('The operation was aborted due to timeout', 'AbortError');
+        throw domException;
+      };
+
+      const provider = new HuggingFaceProvider({ timeoutMs: 50 });
+      let caughtError: ModelInferenceError | null = null;
+
+      try {
+        await provider.infer(createSampleScreenshot());
+      } catch (err) {
+        if (err instanceof ModelInferenceError) {
+          caughtError = err;
+        }
+      }
+
+      assert(caughtError !== null, 'Throws ModelInferenceError on abort/timeout');
+      assertEqual(
+        (caughtError?.details as { reason?: string })?.reason,
+        'INFERENCE_TIMEOUT',
+        'Reason is INFERENCE_TIMEOUT'
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  await test('HuggingFaceProvider fails closed on malformed response format', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => {
+        return new Response(JSON.stringify({ unexpectedKey: 12345 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      };
+
+      const provider = new HuggingFaceProvider();
+      let caughtError: ModelInferenceError | null = null;
+
+      try {
+        await provider.infer(createSampleScreenshot());
+      } catch (err) {
+        if (err instanceof ModelInferenceError) {
+          caughtError = err;
+        }
+      }
+
+      assert(caughtError !== null, 'Throws ModelInferenceError on unsupported schema');
+      assertEqual(
+        (caughtError?.details as { reason?: string })?.reason,
+        'UNSUPPORTED_RESPONSE',
+        'Reason is UNSUPPORTED_RESPONSE'
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  // --- Suite 10: Real End-to-End Visual Grounding Pipeline Test ---
+  console.log('\n[Suite 10: Real End-to-End Inference Pipeline]');
+
+  await test('Real end-to-end inference pipeline: Screenshot -> HTTP Request -> Model Prediction -> VisualEvidence', async () => {
+    // Import node:http dynamically to run a real HTTP server on a local loopback port
+    const http = await import('node:http');
+
+    let receivedMethod = '';
+    let receivedAuthHeader = '';
+    let receivedContentType = '';
+    let receivedRequestBody = '';
+
+    const server = http.createServer((req, res) => {
+      receivedMethod = req.method ?? '';
+      receivedAuthHeader = req.headers['authorization'] ?? '';
+      receivedContentType = req.headers['content-type'] ?? '';
+
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
+
+      req.on('end', () => {
+        receivedRequestBody = body;
+
+        // Simulate ShowUI-2B / VLM vision response for "Locate the Submit button"
+        // Button is positioned at [x: 400, y: 550] on 1000x1000 canvas -> [0.4, 0.55]
+        const responseData = {
+          choices: [
+            {
+              message: {
+                content: "{'action': 'CLICK', 'position': [0.4, 0.55]}",
+              },
+            },
+          ],
+        };
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(responseData));
+      });
+    });
+
+    // Listen on ephemeral local port
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', () => resolve());
+    });
+
+    const address = server.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+    const testEndpointUrl = `http://127.0.0.1:${port}/v1/chat/completions`;
+
+    try {
+      // Create HuggingFaceProvider targeting the real local HTTP server
+      const hfProvider = new HuggingFaceProvider({
+        apiKey: 'hf_test_token_secret',
+        endpointUrl: testEndpointUrl,
+      });
+
+      const adapter = new ShowUIAdapter(undefined, hfProvider);
+
+      // Create a real screenshot payload with viewport
+      const realScreenshot: ScreenshotInput = {
+        format: 'png',
+        data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        viewport: {
+          width: 1000,
+          height: 1000,
+          dpr: 1,
+        },
+      };
+
+      // Execute grounding with instruction query
+      const evidence = await adapter.executeGrounding(realScreenshot, 'Locate the Submit button');
+
+      // Verify real HTTP request properties
+      assertEqual(receivedMethod, 'POST', 'HTTP Method is POST');
+      assertEqual(receivedContentType, 'application/json', 'Content-Type is application/json');
+      assertEqual(receivedAuthHeader, 'Bearer hf_test_token_secret', 'Authorization header matches');
+
+      const parsedRequest = JSON.parse(receivedRequestBody);
+      assert(Boolean(parsedRequest.messages), 'Request contains messages array');
+      assert(
+        parsedRequest.messages[1].content[0].text.includes('Locate the Submit button'),
+        'Instruction query included in prompt'
+      );
+      assert(
+        parsedRequest.messages[1].content[1].image_url.url.startsWith('data:image/png;base64,'),
+        'Screenshot transmitted as data URL'
+      );
+
+      // Verify VisualEvidence output
+      assertEqual(evidence.source, 'ShowUI-2B', 'VisualEvidence source is ShowUI-2B');
+      assertEqual(evidence.elements.length, 1, 'Exactly 1 UI element grounded');
+
+      const submitButton = evidence.elements[0];
+      assertEqual(submitButton.label, 'CLICK', 'Label is CLICK');
+      assertEqual(submitButton.bbox.width, 32, 'Default point target width is 32');
+      assertEqual(submitButton.bbox.height, 32, 'Default point target height is 32');
+      assertEqual(submitButton.bbox.x, 384, 'BBox x centered around 400 (400 - 16)');
+      assertEqual(submitButton.bbox.y, 534, 'BBox y centered around 550 (550 - 16)');
+      assertEqual(submitButton.confidence, 0.9, 'Confidence is 0.9');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   console.log(`\nTest Execution Summary: ${passed} Passed, ${failed} Failed of ${passed + failed} Total Tests\n`);
 
   if (failed > 0) {
@@ -688,4 +1060,16 @@ export async function runAllVisualGroundingTests(): Promise<{ passed: number; fa
   }
 
   return { passed, failed, total: passed + failed };
+}
+
+// Automatically run tests when executed directly
+if (typeof process !== 'undefined' && process.argv && process.argv[1]?.includes('visualGrounding.test')) {
+  runAllVisualGroundingTests()
+    .then((results) => {
+      console.log(`\nAll ${results.total} visual perception tests executed successfully.`);
+    })
+    .catch((err) => {
+      console.error('\nTest runner failed:', err);
+      process.exit(1);
+    });
 }

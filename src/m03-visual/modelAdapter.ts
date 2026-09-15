@@ -5,6 +5,8 @@
  */
 
 import { CoordinateParser } from './coordinateParser';
+import { HuggingFaceProvider } from './huggingFaceProvider';
+import { LocalONNXProvider } from './localONNXProvider';
 import {
   BackendAllocationError,
   BackendStatus,
@@ -20,6 +22,7 @@ import {
   ShowUIConfig,
   VisualElement,
   VisualEvidence,
+  VisualInferenceProvider,
 } from './types';
 
 export const DEFAULT_MODEL_PATH = 'models/showui-2b.onnx';
@@ -31,7 +34,7 @@ export const DEFAULT_CONFIDENCE_THRESHOLD = 0.25;
 export const DEFAULT_POINT_TARGET_SIZE = 32;
 
 export interface ResolvedShowUIConfig {
-  modelFormat: 'onnx' | 'gguf';
+  modelFormat: 'onnx' | 'gguf' | 'hosted-hf';
   modelPath: string;
   ggufSource: GGUFModelSource;
   preferredBackend: ExecutionBackend;
@@ -90,22 +93,25 @@ export class DefaultONNXSessionProvider implements ONNXSessionProvider {
 }
 
 /**
- * ShowUI-2B Adapter for Local Visual Grounding
+ * ShowUI-2B Adapter for Visual Grounding
+ * Supports:
+ * - Current Prototype: HuggingFaceProvider (hosted inference)
+ * - Future Architecture: LocalONNXProvider (ShowUI-2B ONNX WebGPU)
  */
 export class ShowUIAdapter {
   private readonly config: ResolvedShowUIConfig;
-  private readonly sessionProvider: ONNXSessionProvider;
+  private readonly provider: VisualInferenceProvider;
+  private readonly sessionProvider?: ONNXSessionProvider;
   private backendStatus: BackendStatus;
   private session: ONNXInferenceSession | null = null;
   private isInitialized = false;
 
   constructor(
     config?: ShowUIConfig,
-    sessionProvider?: ONNXSessionProvider
+    providerOrSessionProvider?: VisualInferenceProvider | ONNXSessionProvider
   ) {
-    this.sessionProvider = sessionProvider ?? new DefaultONNXSessionProvider();
     this.config = {
-      modelFormat: config?.modelFormat ?? 'onnx',
+      modelFormat: config?.modelFormat ?? 'hosted-hf',
       modelPath: config?.modelPath ?? DEFAULT_MODEL_PATH,
       ggufSource: config?.ggufSource ?? {
         modelUrl: DEFAULT_GGUF_MODEL_URL,
@@ -118,62 +124,109 @@ export class ShowUIAdapter {
       systemPrompt: config?.systemPrompt ?? SHOWUI_GROUNDING_SYSTEM_PROMPT,
     };
 
+    // Determine whether an ONNXSessionProvider or VisualInferenceProvider was supplied
+    if (providerOrSessionProvider && 'createSession' in providerOrSessionProvider) {
+      this.sessionProvider = providerOrSessionProvider;
+      this.provider = new LocalONNXProvider({
+        modelPath: this.config.modelPath,
+        preferredBackend: this.config.preferredBackend,
+        fallbackBackends: this.config.fallbackBackends,
+      });
+    } else if (providerOrSessionProvider && 'infer' in providerOrSessionProvider) {
+      this.provider = providerOrSessionProvider;
+    } else if (config?.provider) {
+      this.provider = config.provider;
+    } else if (config?.modelFormat === 'onnx') {
+      this.sessionProvider = new DefaultONNXSessionProvider();
+      this.provider = new LocalONNXProvider({
+        modelPath: this.config.modelPath,
+        preferredBackend: this.config.preferredBackend,
+        fallbackBackends: this.config.fallbackBackends,
+      });
+    } else {
+      // Default prototype backend: HuggingFaceProvider
+      this.provider = new HuggingFaceProvider(config?.huggingFaceConfig);
+    }
+
     this.backendStatus = config?.backendStatus ?? {
-      activeBackend: this.config.preferredBackend,
+      activeBackend:
+        this.provider.providerId === 'HuggingFaceHosted'
+          ? 'hosted-huggingface'
+          : this.config.preferredBackend,
       isWebGPUSupported: true,
       isFallbackActive: false,
+      providerId: this.provider.providerId,
     };
   }
 
   /**
-   * Initializes the ONNX inference session with automatic failover
+   * Retrieves the active VisualInferenceProvider
+   */
+  public getProvider(): VisualInferenceProvider {
+    return this.provider;
+  }
+
+  /**
+   * Initializes the inference session or verifies provider availability
    */
   public async initialize(): Promise<void> {
-    if (this.isInitialized && this.session) {
-      return;
-    }
-
-    const backendsToTry: ExecutionBackend[] = [
-      this.config.preferredBackend,
-      ...this.config.fallbackBackends.filter((b) => b !== this.config.preferredBackend),
-    ];
-
-    let lastError: Error | null = null;
-
-    for (const backend of backendsToTry) {
-      try {
-        const supported = await this.sessionProvider.isBackendSupported(backend);
-        if (!supported) {
-          continue;
-        }
-
-        this.session = await this.sessionProvider.createSession(this.config.modelPath, backend);
-        const isFallback = backend !== this.config.preferredBackend;
-
-        this.backendStatus = {
-          activeBackend: backend,
-          isWebGPUSupported: backend === 'webgpu' || (await this.sessionProvider.isBackendSupported('webgpu')),
-          isFallbackActive: isFallback,
-        };
-
-        this.isInitialized = true;
+    if (this.sessionProvider) {
+      if (this.isInitialized && this.session) {
         return;
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
       }
+
+      const backendsToTry: ExecutionBackend[] = [
+        this.config.preferredBackend,
+        ...this.config.fallbackBackends.filter((b) => b !== this.config.preferredBackend),
+      ];
+
+      let lastError: Error | null = null;
+
+      for (const backend of backendsToTry) {
+        try {
+          const supported = await this.sessionProvider.isBackendSupported(backend);
+          if (!supported) {
+            continue;
+          }
+
+          this.session = await this.sessionProvider.createSession(this.config.modelPath, backend);
+          const isFallback = backend !== this.config.preferredBackend;
+
+          this.backendStatus = {
+            activeBackend: backend,
+            isWebGPUSupported:
+              backend === 'webgpu' || (await this.sessionProvider.isBackendSupported('webgpu')),
+            isFallbackActive: isFallback,
+            providerId: 'ONNXSessionProvider',
+          };
+
+          this.isInitialized = true;
+          return;
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+        }
+      }
+
+      throw new BackendAllocationError(
+        `All execution backends failed to allocate for ShowUI-2B: ${lastError?.message ?? 'Unknown error'}`,
+        { backendsTried: backendsToTry, lastError }
+      );
     }
 
-    throw new BackendAllocationError(
-      `All execution backends failed to allocate for ShowUI-2B: ${lastError?.message ?? 'Unknown error'}`,
-      { backendsTried: backendsToTry, lastError }
-    );
+    const available = await this.provider.isAvailable();
+    if (!available) {
+      throw new BackendAllocationError(
+        `Visual inference provider '${this.provider.providerId}' is not available.`
+      );
+    }
+    this.isInitialized = true;
   }
 
   /**
    * Returns current backend runtime state
    */
   public getBackendStatus(): BackendStatus {
-    return { ...this.backendStatus };
+    return { ...this.backendStatus, providerId: this.provider.providerId };
   }
 
   /**
@@ -212,13 +265,21 @@ export class ShowUIAdapter {
   /**
    * Execute visual grounding on the screenshot to detect UI interactables and bounding boxes
    */
-  public async executeGrounding(screenshot: ScreenshotInput): Promise<VisualEvidence> {
+  public async executeGrounding(screenshot: ScreenshotInput, query?: string): Promise<VisualEvidence> {
     // 1. Strict Input Validation (Fail-closed)
     this.validateScreenshot(screenshot);
 
-    // 2. Ensure Session is Initialized
-    if (!this.isInitialized || !this.session) {
-      await this.initialize();
+    let rawPredictions: RawVisualPrediction[];
+
+    if (this.sessionProvider) {
+      // 2. Ensure Session is Initialized for legacy session provider tests
+      if (!this.isInitialized || !this.session) {
+        await this.initialize();
+      }
+      rawPredictions = await this.runInference(screenshot);
+    } else {
+      // Use clean VisualInferenceProvider abstraction
+      rawPredictions = await this.provider.infer(screenshot, query);
     }
 
     // 3. Prepare Coordinate Parser with target Viewport
@@ -227,10 +288,7 @@ export class ShowUIAdapter {
       defaultPointSize: this.config.defaultPointTargetSize,
     });
 
-    // 4. Run Model Inference
-    const rawPredictions = await this.runInference(screenshot);
-
-    // 5. Postprocess predictions into strict VisualEvidence format
+    // 4. Postprocess predictions into strict VisualEvidence format
     const elements: VisualElement[] = [];
 
     for (const pred of rawPredictions) {
@@ -239,6 +297,16 @@ export class ShowUIAdapter {
 
         // Discard invalid/zero-area bounding boxes
         if (bbox.width <= 0 || bbox.height <= 0) {
+          continue;
+        }
+
+        // Validate finite coordinates
+        if (
+          !Number.isFinite(bbox.x) ||
+          !Number.isFinite(bbox.y) ||
+          !Number.isFinite(bbox.width) ||
+          !Number.isFinite(bbox.height)
+        ) {
           continue;
         }
 
@@ -258,7 +326,7 @@ export class ShowUIAdapter {
       }
     }
 
-    // 6. Return strictly typed VisualEvidence conforming to INTERFACES.md
+    // 5. Return strictly typed VisualEvidence conforming to INTERFACES.md
     return {
       source: 'ShowUI-2B',
       elements,
@@ -266,7 +334,7 @@ export class ShowUIAdapter {
   }
 
   /**
-   * Low-level inference execution on screenshot buffer
+   * Low-level inference execution for session provider
    */
   private async runInference(screenshot: ScreenshotInput): Promise<RawVisualPrediction[]> {
     if (!this.session) {
@@ -274,7 +342,6 @@ export class ShowUIAdapter {
     }
 
     try {
-      // Execute inference via session
       const feeds = {
         screenshot_data: screenshot.data,
         viewport_width: screenshot.viewport.width,
@@ -302,12 +369,15 @@ export class ShowUIAdapter {
   }
 
   /**
-   * Release session and GPU/memory resources
+   * Release session and provider resources
    */
   public async release(): Promise<void> {
     if (this.session) {
       await this.session.release();
       this.session = null;
+    }
+    if (this.provider.release) {
+      await this.provider.release();
     }
     this.isInitialized = false;
   }

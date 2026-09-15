@@ -30,7 +30,10 @@ export async function handleOffscreenGroundingRequest(
   }
 
   try {
-    const evidence = await adapter.executeGrounding(request.payload.screenshot);
+    const evidence = await adapter.executeGrounding(
+      request.payload.screenshot,
+      request.payload.query
+    );
     const backendStatus = adapter.getBackendStatus();
 
     return {

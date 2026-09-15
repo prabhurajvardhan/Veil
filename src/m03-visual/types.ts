@@ -52,7 +52,7 @@ export interface VisualEvidence {
 /**
  * Supported execution backends for local ONNX Runtime Web / WebGPU inference
  */
-export type ExecutionBackend = 'webgpu' | 'wasm' | 'cpu';
+export type ExecutionBackend = 'webgpu' | 'wasm' | 'cpu' | 'hosted-huggingface';
 
 /**
  * Status of the visual grounding engine backend
@@ -61,6 +61,58 @@ export interface BackendStatus {
   activeBackend: ExecutionBackend;
   isWebGPUSupported: boolean;
   isFallbackActive: boolean;
+  providerId?: string;
+  endpointUrl?: string;
+}
+
+/**
+ * Generic Visual Inference Provider abstraction for T005.
+ * Enables clean separation between:
+ * - CURRENT PROTOTYPE: HuggingFaceProvider (hosted inference)
+ * - FUTURE POST-HACKATHON: LocalONNXProvider (ShowUI-2B ONNX Runtime Web / WebGPU)
+ */
+export interface VisualInferenceProvider {
+  readonly providerId: string;
+  isAvailable(): Promise<boolean>;
+  infer(screenshot: ScreenshotInput, query?: string): Promise<RawVisualPrediction[]>;
+  release?(): Promise<void>;
+}
+
+/**
+ * Configuration for Hugging Face Hosted Inference Provider
+ */
+export interface HuggingFaceProviderConfig {
+  /**
+   * API Key for Hugging Face (optional if public or space proxy, required for router API)
+   */
+  apiKey?: string;
+  /**
+   * Hosted model inference endpoint URL
+   * Defaults to https://router.huggingface.co/hf-inference/models/showlab/ShowUI-2B
+   */
+  endpointUrl?: string;
+  /**
+   * Model repository name
+   * Defaults to showlab/ShowUI-2B
+   */
+  modelName?: string;
+  /**
+   * Request timeout in milliseconds (default: 30000)
+   */
+  timeoutMs?: number;
+  /**
+   * System prompt / prompt template to use for grounding
+   */
+  systemPrompt?: string;
+}
+
+/**
+ * Configuration for Local ONNX Provider (Future Architecture)
+ */
+export interface LocalONNXProviderConfig {
+  modelPath?: string;
+  preferredBackend?: ExecutionBackend;
+  fallbackBackends?: ExecutionBackend[];
 }
 
 /**
@@ -100,7 +152,9 @@ export const SHOWUI_NAVIGATION_SYSTEM_PROMPT =
  * Options for configuring ShowUI-2B visual grounding adapter
  */
 export interface ShowUIConfig {
-  modelFormat?: 'onnx' | 'gguf';
+  provider?: VisualInferenceProvider;
+  huggingFaceConfig?: HuggingFaceProviderConfig;
+  modelFormat?: 'onnx' | 'gguf' | 'hosted-hf';
   modelPath?: string;
   ggufSource?: GGUFModelSource;
   preferredBackend?: ExecutionBackend;
@@ -134,6 +188,7 @@ export interface OffscreenVisualGroundingRequest {
   type: 'EXECUTE_VISUAL_GROUNDING';
   payload: {
     screenshot: ScreenshotInput;
+    query?: string;
     config?: Partial<ShowUIConfig>;
   };
 }

@@ -6,6 +6,8 @@
 
 export * from './types';
 export * from './coordinateParser';
+export * from './huggingFaceProvider';
+export * from './localONNXProvider';
 export * from './modelAdapter';
 export * from './offscreenHandler';
 export * from './visualPerceptionManager';
