@@ -30,6 +30,10 @@ import { OrchestratorOptions, OrchestratorRunResult, StepRecord } from './types'
 import { ObservationManager, generateObservationId } from '../m02-observation/observationManager';
 import { RawObservation } from '../m02-observation/types';
 import { DomGrounder } from '../m04-dom/domGrounding';
+import { VisualPerceptionManager } from '../m03-visual/visualPerceptionManager';
+import { VisualEvidence } from '../m03-visual/types';
+import { TesseractAdapter } from '../m05-ocr/tesseractAdapter';
+import { OcrEngine, OcrEvidence } from '../m05-ocr/types';
 import { PerceptionFusionEngine } from '../m06-fusion/perceptionFusion';
 import { PrivacyClassifier } from '../m07-privacy/privacyClassifier';
 import { sanitizeObservation } from '../m08-sanitization/observationSanitizer';
@@ -41,18 +45,30 @@ import { SanitizedObservation } from '../m08-sanitization/types';
 export class VeilOrchestrator {
   private readonly stateMachine: OrchestratorStateMachine;
   private readonly domGrounder: DomGrounder;
+  private readonly visualPerceptionManager?: VisualPerceptionManager;
+  private readonly ocrEngine?: OcrEngine;
   private readonly fusionEngine: PerceptionFusionEngine;
   private readonly privacyClassifier: PrivacyClassifier;
   private readonly observationManager: ObservationManager;
-  private readonly defaultExecutor: BrowserExecutor;
+  private readonly defaultExecutor?: BrowserExecutor;
+  private readonly defaultReasoner?: ReasoningGateway;
 
-  constructor() {
+  constructor(options?: {
+    visualPerceptionManager?: VisualPerceptionManager;
+    ocrEngine?: OcrEngine;
+    observationManager?: ObservationManager;
+    browserExecutor?: BrowserExecutor;
+    reasoningGateway?: ReasoningGateway;
+  }) {
     this.stateMachine = new OrchestratorStateMachine();
     this.domGrounder = new DomGrounder();
     this.fusionEngine = new PerceptionFusionEngine();
     this.privacyClassifier = new PrivacyClassifier(0.5);
-    this.observationManager = new ObservationManager();
-    this.defaultExecutor = new BrowserExecutor();
+    this.observationManager = options?.observationManager ?? new ObservationManager();
+    this.visualPerceptionManager = options?.visualPerceptionManager ?? new VisualPerceptionManager();
+    this.ocrEngine = options?.ocrEngine ?? new TesseractAdapter();
+    this.defaultExecutor = options?.browserExecutor;
+    this.defaultReasoner = options?.reasoningGateway;
   }
 
   public getState(): AgentState {
@@ -78,7 +94,7 @@ export class VeilOrchestrator {
     const maxSteps = options?.maxSteps ?? 10;
     const history: StepRecord[] = [];
 
-    const reasoner = options?.reasoningGateway;
+    const reasoner = options?.reasoningGateway ?? this.defaultReasoner;
     if (!reasoner) {
       return {
         goal,
@@ -90,7 +106,10 @@ export class VeilOrchestrator {
       };
     }
 
-    const executor = options?.browserExecutor ?? this.defaultExecutor;
+    const manager = options?.observationManager ?? this.observationManager;
+    // Connect M11 BrowserExecutor to the active Chrome/CDP session for the target tab
+    const cdpSession = manager.getOrCreateSession(tabId);
+    const executor = options?.browserExecutor ?? this.defaultExecutor ?? new BrowserExecutor({ cdpDispatcher: cdpSession });
 
     try {
       for (let stepIndex = 1; stepIndex <= maxSteps; stepIndex++) {
@@ -100,13 +119,53 @@ export class VeilOrchestrator {
         this.transition('OBSERVING', options?.onStateChange);
 
         const rawObs = await this.acquireRawObservation(tabId, stepIndex, options);
+
+        // M04: DOM/A11y Grounding
         const domEvidence = this.domGrounder.ground(rawObs.dom_tree, rawObs.a11y_tree, {
           viewport: rawObs.screenshot?.viewport,
         });
 
+        // M03: Visual Perception (ShowUI-2B)
+        let visualEvidence: VisualEvidence | undefined;
+        if (rawObs.screenshot && rawObs.screenshot.data) {
+          try {
+            const visualMgr = options?.visualPerceptionManager ?? this.visualPerceptionManager;
+            if (visualMgr) {
+              visualEvidence = await visualMgr.processScreenshot({
+                format: rawObs.screenshot.format,
+                data: rawObs.screenshot.data,
+                viewport: rawObs.screenshot.viewport,
+              });
+            }
+          } catch (err) {
+            // Fail closed: if visual perception is unavailable, do NOT invent evidence
+            visualEvidence = undefined;
+          }
+        }
+
+        // M05: Targeted OCR (Tesseract.js)
+        let ocrEvidence: OcrEvidence | undefined;
+        if (rawObs.screenshot && rawObs.screenshot.data) {
+          try {
+            const ocrEng = options?.ocrEngine ?? this.ocrEngine;
+            if (ocrEng) {
+              const ocrResult = await ocrEng.process(rawObs.screenshot);
+              if (ocrResult) {
+                ocrEvidence = ocrResult;
+              }
+            }
+          } catch (err) {
+            // Fail closed: if OCR is unavailable, do NOT invent evidence
+            ocrEvidence = undefined;
+          }
+        }
+
+        // M06: Multimodal Perception Fusion (DOM + Visual + OCR)
         const fusionResult = this.fusionEngine.fuse({
           observation_id: rawObs.observation_id,
           dom: domEvidence,
+          visual: visualEvidence,
+          ocr: ocrEvidence,
         });
 
         // ==========================================================
@@ -252,6 +311,9 @@ export class VeilOrchestrator {
     }
     if (rawObs.raw_ocr !== undefined) {
       throw new Error('PRIVACY BOUNDARY LEAK: raw_ocr detected in outbound SanitizedObservation');
+    }
+    if (rawObs.screenshot !== undefined || rawObs.raw_screenshot !== undefined) {
+      throw new Error('PRIVACY BOUNDARY LEAK: raw screenshot detected in outbound SanitizedObservation');
     }
   }
 }

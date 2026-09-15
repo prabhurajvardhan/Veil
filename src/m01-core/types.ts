@@ -13,6 +13,8 @@ import { ExecutionResult } from '../m11-executor/types';
 import { ReasoningGateway } from '../m09-reasoning/reasoningGateway';
 import { BrowserExecutor } from '../m11-executor/browserExecutor';
 import { ObservationManager } from '../m02-observation/observationManager';
+import { VisualPerceptionManager } from '../m03-visual/visualPerceptionManager';
+import { OcrEngine } from '../m05-ocr/types';
 
 export interface StepRecord {
   stepIndex: number;
@@ -42,6 +44,8 @@ export interface OrchestratorOptions {
   reasoningGateway?: ReasoningGateway;
   browserExecutor?: BrowserExecutor;
   observationManager?: ObservationManager;
+  visualPerceptionManager?: VisualPerceptionManager;
+  ocrEngine?: OcrEngine;
   observationProvider?: (tabId: number, stepIndex: number) => Promise<RawObservation> | RawObservation;
   validationOptions?: ValidationOptions;
   onStepComplete?: (stepRecord: StepRecord) => void;

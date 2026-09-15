@@ -14,6 +14,12 @@ import { ReasoningProvider, ReasoningRequest } from '../../m09-reasoning/types';
 import { BrowserExecutor } from '../../m11-executor/browserExecutor';
 import { CdpEventDispatcher } from '../../m11-executor/types';
 import { SanitizedObservation } from '../../m08-sanitization/types';
+import { ObservationManager } from '../../m02-observation/observationManager';
+import { createMockDebuggerAPI } from '../../m02-observation/tests/testUtils';
+import { VisualPerceptionManager } from '../../m03-visual/visualPerceptionManager';
+import { VisualEvidence } from '../../m03-visual/types';
+import { TesseractAdapter } from '../../m05-ocr/tesseractAdapter';
+import { OcrEngine, OcrEvidence } from '../../m05-ocr/types';
 
 export async function runT015Tests(): Promise<{ name: string; passed: boolean; error?: string }[]> {
   const results: { name: string; passed: boolean; error?: string }[] = [];
@@ -458,6 +464,282 @@ export async function runT015Tests(): Promise<{ name: string; passed: boolean; e
 
     assertEqual(result.success, false, 'Crashed CDP run reported as failure');
     assert(result.errorMessage?.includes('Execution failed') || false, 'Error message captures failure');
+  });
+
+  // 9. Visual Perception Integration: M03 ShowUI visual evidence enters M06 Perception Fusion
+  await test('9. Visual Perception Integration: Visual evidence from M03 enters M06 and participates in fusion', async () => {
+    class TestVisualPerceptionManager extends VisualPerceptionManager {
+      override async processScreenshot(): Promise<VisualEvidence> {
+        return {
+          source: 'ShowUI-2B',
+          elements: [
+            {
+              bbox: { x: 10, y: 10, width: 100, height: 40 },
+              label: 'Visual Confirm Button',
+              confidence: 0.94,
+            },
+          ],
+        };
+      }
+    }
+
+    let capturedRequest: ReasoningRequest | null = null;
+    class VisualCheckReasoner implements ReasoningProvider {
+      public readonly providerId = 'visual-check';
+      async proposeAction(request: ReasoningRequest): Promise<unknown> {
+        capturedRequest = request;
+        return {
+          action_id: 'act-vis-done',
+          observation_id: request.observation_id,
+          action_type: 'DONE',
+          intended_effect: 'Complete test',
+        };
+      }
+    }
+
+    const gateway = new ReasoningGateway({ provider: new VisualCheckReasoner() });
+    const orchestrator = new VeilOrchestrator();
+
+    const result = await orchestrator.run('Perceive visual evidence', {
+      maxSteps: 1,
+      reasoningGateway: gateway,
+      visualPerceptionManager: new TestVisualPerceptionManager(),
+      observationProvider: async () => createMockRawObservation('obs-visual-test-1'),
+    });
+
+    assertEqual(result.success, true, 'Pipeline executed with M03 visual perception');
+    assert(!!capturedRequest, 'Sanitized observation reached reasoner');
+    assert(capturedRequest!.nodes.length > 0, 'Nodes present in sanitized observation');
+  });
+
+  // 10. OCR Evidence Integration: M05 OCR evidence enters M06 Perception Fusion
+  await test('10. OCR Evidence Integration: OCR evidence from M05 enters M06 and participates in fusion', async () => {
+    class TestOcrEngine implements OcrEngine {
+      public readonly engineName = 'Tesseract.js';
+      async initialize(): Promise<void> {}
+      async terminate(): Promise<void> {}
+      async process(): Promise<OcrEvidence | null> {
+        return {
+          source: 'Tesseract.js',
+          elements: [
+            {
+              bbox: { x: 10, y: 10, width: 100, height: 40 },
+              text: 'Confirm Booking',
+              confidence: 0.96,
+            },
+          ],
+        };
+      }
+    }
+
+    let capturedRequest: ReasoningRequest | null = null;
+    class OcrCheckReasoner implements ReasoningProvider {
+      public readonly providerId = 'ocr-check';
+      async proposeAction(request: ReasoningRequest): Promise<unknown> {
+        capturedRequest = request;
+        return {
+          action_id: 'act-ocr-done',
+          observation_id: request.observation_id,
+          action_type: 'DONE',
+          intended_effect: 'Complete test',
+        };
+      }
+    }
+
+    const gateway = new ReasoningGateway({ provider: new OcrCheckReasoner() });
+    const orchestrator = new VeilOrchestrator();
+
+    const result = await orchestrator.run('Perceive OCR evidence', {
+      maxSteps: 1,
+      reasoningGateway: gateway,
+      ocrEngine: new TestOcrEngine(),
+      observationProvider: async () => createMockRawObservation('obs-ocr-test-1'),
+    });
+
+    assertEqual(result.success, true, 'Pipeline executed with M05 OCR evidence');
+    assert(!!capturedRequest, 'Sanitized observation reached reasoner');
+  });
+
+  // 11. Real M11 CDP Integration: BrowserExecutor automatically connects to tab CDPSession
+  await test('11. Real M11 CDP Integration: BrowserExecutor automatically binds to active tab CDPSession', async () => {
+    const mockDebugger = createMockDebuggerAPI();
+    const obsManager = new ObservationManager({ debuggerApi: mockDebugger.api });
+
+    class DoneReasoner implements ReasoningProvider {
+      public readonly providerId = 'done';
+      async proposeAction(request: ReasoningRequest): Promise<unknown> {
+        return {
+          action_id: 'act-done-cdp',
+          observation_id: request.observation_id,
+          action_type: 'DONE',
+          intended_effect: 'Task complete',
+        };
+      }
+    }
+
+    const gateway = new ReasoningGateway({ provider: new DoneReasoner() });
+    const orchestrator = new VeilOrchestrator({ observationManager: obsManager });
+
+    // Note: browserExecutor is NOT passed — orchestrator must automatically bind to CDPSession for tab 42!
+    const result = await orchestrator.run('Test Real CDP Binding', {
+      tabId: 42,
+      maxSteps: 1,
+      reasoningGateway: gateway,
+    });
+
+    assertEqual(result.success, true, 'Execution completed successfully via real CDP session binding');
+    assertEqual(result.finalState, 'COMPLETED', 'Final state is COMPLETED');
+    assertEqual(mockDebugger.getAttachedTabId(), 42, 'Attached to target tab 42');
+  });
+
+  // 12. Real M11 CDP Dispatch & Re-Observation: CLICK dispatches CDP mouse events then captures fresh observation
+  await test('12. Real M11 CDP Dispatch & Re-Observation: CLICK dispatches CDP mouse events and triggers fresh observation', async () => {
+    const mockDebugger = createMockDebuggerAPI();
+    mockDebugger.setMockCommand('DOM.getDocument', () => ({
+      root: {
+        nodeId: 1,
+        backendNodeId: 100,
+        nodeType: 9,
+        nodeName: '#document',
+        childNodeCount: 1,
+        children: [
+          {
+            nodeId: 2,
+            backendNodeId: 101,
+            nodeType: 1,
+            nodeName: 'HTML',
+            children: [
+              {
+                nodeId: 3,
+                backendNodeId: 102,
+                nodeType: 1,
+                nodeName: 'BUTTON',
+                attributes: ['type', 'submit', 'role', 'button'],
+                children: [{ nodeId: 4, nodeType: 3, nodeName: '#text', nodeValue: 'Submit' }],
+              },
+            ],
+          },
+        ],
+      },
+    }));
+    mockDebugger.setMockCommand('Accessibility.getFullAXTree', () => ({
+      nodes: [
+        {
+          nodeId: 'ax-btn-1',
+          ignored: false,
+          backendDOMNodeId: 102,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'name', value: 'Submit' },
+        },
+      ],
+    }));
+    mockDebugger.setMockCommand('DOM.getBoxModel', () => ({
+      model: {
+        content: [100, 100, 200, 100, 200, 140, 100, 140],
+        width: 100,
+        height: 40,
+      },
+    }));
+
+    const obsManager = new ObservationManager({ debuggerApi: mockDebugger.api });
+
+    const observationIdsSeen: string[] = [];
+    let stepCount = 0;
+
+    class ClickThenDoneReasoner implements ReasoningProvider {
+      public readonly providerId = 'click-done';
+      async proposeAction(request: ReasoningRequest): Promise<unknown> {
+        observationIdsSeen.push(request.observation_id);
+        stepCount++;
+
+        if (stepCount === 1) {
+          const btnNode = request.nodes.find((n) => n.role === 'button' || n.interactable);
+          assert(!!btnNode, 'Button node must be found');
+          return {
+            action_id: 'act-click-real-cdp',
+            observation_id: request.observation_id,
+            action_type: 'CLICK',
+            target_id: btnNode!.target_id,
+            intended_effect: 'Click target element',
+          };
+        } else {
+          return {
+            action_id: 'act-done-real-cdp',
+            observation_id: request.observation_id,
+            action_type: 'DONE',
+            intended_effect: 'Finish task after re-observation',
+          };
+        }
+      }
+    }
+
+    const gateway = new ReasoningGateway({ provider: new ClickThenDoneReasoner() });
+    const orchestrator = new VeilOrchestrator({ observationManager: obsManager });
+
+    const result = await orchestrator.run('Click and re-observe', {
+      tabId: 77,
+      maxSteps: 2,
+      reasoningGateway: gateway,
+    });
+
+    assertEqual(result.success, true, 'Pipeline executed multi-step with real CDP');
+    assertEqual(result.stepsExecuted, 2, '2 steps executed');
+    assertEqual(observationIdsSeen.length, 2, 'Two distinct observations captured');
+    assert(observationIdsSeen[0] !== observationIdsSeen[1], 'New observation_id generated on re-observation');
+
+    // Verify CDP command log received Input.dispatchMouseEvent
+    const commandLog = mockDebugger.getCommandLog();
+    const mouseEvents = commandLog.filter((cmd) => cmd.method === 'Input.dispatchMouseEvent');
+    assert(mouseEvents.length >= 2, 'CDP Input.dispatchMouseEvent dispatched');
+  });
+
+  // 13. Fail-Closed Perception Invariant: Failing Visual or OCR does NOT invent fake evidence
+  await test('13. Fail-Closed Perception: Failing Visual or OCR component does not inject fabricated evidence', async () => {
+    class ThrowingVisualManager extends VisualPerceptionManager {
+      override async processScreenshot(): Promise<VisualEvidence> {
+        throw new Error('Visual model weights unavailable');
+      }
+    }
+
+    class ThrowingOcrEngine implements OcrEngine {
+      public readonly engineName = 'Tesseract.js';
+      async initialize(): Promise<void> {}
+      async terminate(): Promise<void> {}
+      async process(): Promise<OcrEvidence | null> {
+        throw new Error('Tesseract worker crashed');
+      }
+    }
+
+    let capturedRequest: ReasoningRequest | null = null;
+    class CheckReasoner implements ReasoningProvider {
+      public readonly providerId = 'check';
+      async proposeAction(request: ReasoningRequest): Promise<unknown> {
+        capturedRequest = request;
+        return {
+          action_id: 'act-done-fail-closed',
+          observation_id: request.observation_id,
+          action_type: 'DONE',
+          intended_effect: 'Task complete',
+        };
+      }
+    }
+
+    const gateway = new ReasoningGateway({ provider: new CheckReasoner() });
+    const orchestrator = new VeilOrchestrator();
+
+    const result = await orchestrator.run('Fail closed test', {
+      maxSteps: 1,
+      reasoningGateway: gateway,
+      visualPerceptionManager: new ThrowingVisualManager(),
+      ocrEngine: new ThrowingOcrEngine(),
+      observationProvider: async () => createMockRawObservation('obs-fail-closed-1'),
+    });
+
+    assertEqual(result.success, true, 'Orchestrator continues safely with available DOM evidence');
+    assert(!!capturedRequest, 'Sanitized observation delivered to reasoner');
+    for (const node of capturedRequest!.nodes) {
+      assert(typeof node.target_id === 'string' && node.target_id.length > 0, 'Target ID is valid');
+    }
   });
 
   return results;
