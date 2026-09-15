@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "VEIL",
+  "version": "1.0.0",
+  "description": "Privacy-first AI browser agent",
+  "permissions": [
+    "debugger",
+    "storage",
+    "activeTab",
+    "offscreen",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Open VEIL"
+  }
+}

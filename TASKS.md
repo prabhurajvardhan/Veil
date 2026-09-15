@@ -81,6 +81,19 @@ A dependency is a **real** data/artifact dependency, not a scheduling artefact. 
 
 ---
 
+## 3.1 Implementation-State Note (T001 / T002)
+
+A direct commit to `main` (`fa42f97 feat: implement extension shell and orchestrator`) added `manifest.json`, `src/m01-core/background.ts`, `src/m01-core/stateMachine.ts` and build configuration, and marked T001/T002 `VALIDATED` and T003/T004 `READY`.
+
+This PR deliberately does **not** carry that status forward, for two reasons:
+
+1. **The freeze gate is still unmet** (`docs/freezes/`; ADR 008). `VALIDATED` requires the task's acceptance criteria to pass against a frozen specification (`TASKS.md` §2.2), and the stage freezes required by `docs/engineering/WORKFLOW.md` §3 have not been recorded. `READY` likewise requires the freeze condition (§2.1 condition 1).
+2. **The committed implementation deviates from binding ADR 010** — see `docs/tasks/T001.md` §20.
+
+The implementation code is preserved by the merge. Resolving the deviation is **T002/T001 rework**, tracked in `docs/tasks/T001.md` §20 — not a documentation change, and not performed here.
+
+---
+
 ## 4. Execution Rules
 1. Only tasks with `STATE = READY` may be executed.
 2. An assigned task that is `BLOCKED` must not be started; see the readiness conditions in §2.
