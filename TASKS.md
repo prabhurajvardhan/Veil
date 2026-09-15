@@ -83,12 +83,17 @@ A dependency is a **real** data/artifact dependency, not a scheduling artefact. 
 
 ## 3.1 Implementation-State Note (T001 / T002)
 
-A direct commit to `main` (`fa42f97 feat: implement extension shell and orchestrator`) added `manifest.json`, `src/m01-core/background.ts`, `src/m01-core/stateMachine.ts` and build configuration, and marked T001/T002 `VALIDATED` and T003/T004 `READY`.
+Direct commits to `main` implemented work ahead of the freeze gate:
+
+- `fa42f97 feat: implement extension shell and orchestrator` — added `manifest.json`, `src/m01-core/background.ts`, `src/m01-core/stateMachine.ts`, build configuration and lockfiles; marked T001/T002 `VALIDATED` and T003/T004 `READY`.
+- `a835048 feat: implement screenshot capture module (T003)` — added `src/m02-observation/*` (CDP session, screenshot capture, observation manager, types, tests) and `tsconfig.json`; marked T003 `VALIDATED` and T005 `READY`.
+
+Both changesets are preserved by the merge.
 
 This PR deliberately does **not** carry that status forward, for two reasons:
 
 1. **The freeze gate is still unmet** (`docs/freezes/`; ADR 008). `VALIDATED` requires the task's acceptance criteria to pass against a frozen specification (`TASKS.md` §2.2), and the stage freezes required by `docs/engineering/WORKFLOW.md` §3 have not been recorded. `READY` likewise requires the freeze condition (§2.1 condition 1).
-2. **The committed implementation deviates from binding ADR 010** — see `docs/tasks/T001.md` §20.
+2. **The committed implementation deviates from binding ADR 010** — see `docs/tasks/T001.md` §20. Because T003 builds on the non-conformant manifest and was validated against an unfrozen specification, T003 and T005 are likewise not `VALIDATED`/`READY`.
 
 The implementation code is preserved by the merge. Resolving the deviation is **T002/T001 rework**, tracked in `docs/tasks/T001.md` §20 — not a documentation change, and not performed here.
 
