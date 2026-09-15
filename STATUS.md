@@ -19,7 +19,7 @@ This is the high-level control board for VEIL. It tracks global lifecycle stages
 | Implementation | BLOCKED | `src/` |
 
 ## 2. Integration Milestones State
-*See [docs/integration/MILESTONES.md](docs/integration/MILESTONES.md) for definitions.*
+*See [INTEGRATION.md](INTEGRATION.md) for definitions.*
 
 | Milestone | Target | Status | Blockers |
 |---|---|---|---|

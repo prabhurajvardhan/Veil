@@ -31,7 +31,7 @@ If you are a new AI or human employee, locate your **Employee Operating Manual**
 ## 4. Operational Control
 *Track progress, integration, and active work here.*
 - [Project Status Board](STATUS.md)
-- [Integration Milestones](docs/integration/MILESTONES.md)
+- [Integration Milestones](INTEGRATION.md)
 - [Task Registry](TASKS.md)
 
 ---
