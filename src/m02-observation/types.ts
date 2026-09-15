@@ -28,6 +28,69 @@ export namespace CDP {
 }
 
 /**
+ * Chrome DevTools Protocol (CDP) raw node types defined by INTERFACES.md
+ */
+export namespace CDP {
+  export namespace DOM {
+    /**
+     * Raw CDP DOM Tree Node per INTERFACES.md / Chrome DevTools Protocol
+     */
+    export interface Node {
+      nodeId: number;
+      backendNodeId?: number;
+      nodeType: number;
+      nodeName: string;
+      localName?: string;
+      nodeValue?: string;
+      childNodeCount?: number;
+      children?: Node[];
+      attributes?: string[];
+      documentURL?: string;
+      baseURL?: string;
+      publicId?: string;
+      systemId?: string;
+      internalSubset?: string;
+      xmlVersion?: string;
+      name?: string;
+      value?: string;
+      pseudoType?: string;
+      shadowRootType?: string;
+      frameId?: string;
+      contentDocument?: Node;
+      shadowRoots?: Node[];
+      templateContent?: Node;
+      pseudoElements?: Node[];
+      importedDocument?: Node;
+      distributedNodes?: unknown[];
+      isSVG?: boolean;
+      compatibilityMode?: string;
+      assignedSlot?: unknown;
+      [key: string]: unknown;
+    }
+  }
+
+  export namespace Accessibility {
+    /**
+     * Raw CDP Accessibility AXNode per INTERFACES.md / Chrome DevTools Protocol
+     */
+    export interface AXNode {
+      nodeId: string;
+      ignored: boolean;
+      ignoredReasons?: Array<{ reason: string; children?: unknown[] }>;
+      role?: { type: string; value?: string };
+      name?: { type: string; value?: string; sources?: unknown[] };
+      description?: { type: string; value?: string; sources?: unknown[] };
+      value?: { type: string; value?: string };
+      properties?: Array<{ name: string; value: { type: string; value?: unknown } }>;
+      childIds?: string[];
+      parentId?: string;
+      backendDOMNodeId?: number;
+      [key: string]: unknown;
+    }
+  }
+}
+
+/**
  * Supported image formats for raw visual capture
  */
 export type ScreenshotFormat = 'png' | 'webp';
@@ -56,9 +119,17 @@ export interface ScreenshotData {
 export interface RawObservation {
   observation_id: string; // UUID v4
   timestamp: number; // Unix epoch ms
-  screenshot: ScreenshotData;
-  dom_tree?: unknown; // Raw CDP DOM Tree (Populated in T004)
-  a11y_tree?: unknown[]; // Raw CDP A11y Tree (Populated in T004)
+  screenshot: {
+    format: 'png' | 'webp';
+    data: string; // Base64
+    viewport: {
+      width: number;
+      height: number;
+      dpr: number;
+    };
+  };
+  dom_tree: CDP.DOM.Node; // Raw CDP DOM Tree
+  a11y_tree: CDP.Accessibility.AXNode[]; // Raw CDP A11y Tree
 }
 
 /**

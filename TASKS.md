@@ -22,9 +22,9 @@ All tasks indexed in this registry inherit the following mandatory architectural
 | [T001](docs/tasks/T001.md) | Implement Extension Shell | AI001 | M01 | None | VALIDATED |
 | [T002](docs/tasks/T002.md) | Implement Orchestrator State Machine | AI001 | M01 | T001 | VALIDATED |
 | [T003](docs/tasks/T003.md) | Implement Screenshot Capture | AI002 | M02 | T001 | VALIDATED |
-| [T004](docs/tasks/T004.md) | Implement DOM/A11y Capture | AI002 | M02 | T001 | READY |
-| [T005](docs/tasks/T005.md) | Implement Visual Grounding Adapter | AI003 | M03 | T003 | IN_PROGRESS |
-| [T006](docs/tasks/T006.md) | Implement DOM Evidence Extraction | AI004 | M04 | T004 | BLOCKED |
+| [T004](docs/tasks/T004.md) | Implement DOM/A11y Capture | AI002 | M02 | T001 | VALIDATED |
+| [T005](docs/tasks/T005.md) | Implement Visual Grounding Adapter | AI003 | M03 | T003 | VALIDATED |
+| [T006](docs/tasks/T006.md) | Implement DOM Evidence Extraction | AI004 | M04 | T004 | READY |
 | [T007](docs/tasks/T007.md) | Implement OCR Extraction | AI004 | M05 | T003 | READY |
 | [T008](docs/tasks/T008.md) | Implement Perception Fusion Logic | AI005 | M06 | T005, T006, T007 | VALIDATED |
 | [T009](docs/tasks/T009.md) | Implement Conflict Resolution & Confidence | AI005 | M06 | T008 | VALIDATED |
