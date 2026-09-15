@@ -1,6 +1,6 @@
 # VEIL — Module Registry
 
-**Status:** FROZEN  
+**Status:** NOT FROZEN — V0 draft (module boundaries PROPOSED). Freeze state is authoritative only in `docs/freezes/MODULES.md`; see ADR 008 in `DECISIONS.md`.
 **Authority:** Derived from `docs/architecture/ARCHITECTURE.md` and `docs/system-design/SYSTEM-DESIGN.md`.
 
 All VEIL modules operate within the **Chrome Extension Manifest V3** architecture. No module may be implemented as or relocated to a standalone web application.
@@ -9,15 +9,18 @@ All VEIL modules operate within the **Chrome Extension Manifest V3** architectur
 
 ## M01: Browser Agent Core / Orchestrator
 - **Runtime:** Chrome Extension Service Worker Context (`background.js`).
-- **Owns:** Extension lifecycle, state machine transitions (IDLE, OBSERVING, AUTHORIZING, REASONING, EXECUTING, VERIFYING, RECOVERY), loop coordination, and end-to-end task verification.
+- **Owns:** Extension lifecycle and the canonical M01 state machine (`IDLE`, `OBSERVING`, `AUTHORIZING`, `REASONING`, `EXECUTING`, `VERIFYING`, `RECOVERY`, `COMPLETED`, `ABORTED`) — defined authoritatively in `docs/agent/STATE-MACHINE.md` (ADR 009) — plus loop coordination and end-to-end task verification.
 - **Does Not Own:** Direct raw observation capture, visual model inference, privacy rules, cloud reasoning, or browser event dispatching.
 - **Network Boundary:** Strictly Local. Does not make external network calls directly.
 - **Browser Boundary:** Indirect control through M02 and M11; manages extension tab state.
 - **Inputs:** User Task Goal, `ExecutionResult`, `VerificationResult`.
 - **Outputs:** Lifecycle triggers for M02, M09, M10.
 - **Dependencies:** M02, M09, M10, M11.
-- **Allowed Files:** `/src/m01-core/*`, `manifest.json`, `vite.config.ts`
+- **Allowed Files:** `/src/m01-core/*`, `manifest.json`, `vite.extension.config.ts`, `vitest.config.ts`, `tsconfig.extension.json`, `package.json`
 - **Forbidden Files:** Any file outside `/src/m01-core/` (unless extension build configuration).
+- **Build-config boundary (T001):** the extension build uses its own `vite.extension.config.ts`. The root `vite.config.ts` is **not** an M01 file — it configures the auxiliary architecture viewer (React plugin, dev server on port 3000) and must not be modified or repurposed.
+- **Shared-file constraint (T001):** `package.json` is shared with the auxiliary architecture viewer. M01 may only make **additive** changes (add build/test scripts and devDependencies); the existing viewer scripts (`dev`, `build`, `preview`) must not be removed or repurposed.
+- **Bundle composition contract:** `manifest.json` declares a single service worker (`background.js`), so every module's code is bundled into it. The bundle entry is `src/m01-core/background.ts`; Vite resolves static imports from other `src/mXX-*/` modules automatically. Data crosses between modules only through `INTERFACES.md` — no module may import `/src/m01-core/` internals.
 - **Related Tasks:** T001, T002, T015.
 - **Integration Milestones:** M0, M1, M5.
 

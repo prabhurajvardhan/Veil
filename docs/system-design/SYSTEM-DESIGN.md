@@ -1,6 +1,6 @@
 # VEIL — System Design Specification
 
-**Status:** FROZEN  
+**Status:** NOT FROZEN — V0 draft. Freeze state is authoritative only in `docs/freezes/SYSTEM-DESIGN.md`; see ADR 008 in `DECISIONS.md`.
 **Purpose:** Detailed operational specifications and exact runtime execution contexts for all VEIL modules.
 
 ---
@@ -22,7 +22,7 @@ All VEIL components execute within one of the following four explicitly defined 
 - **RUNTIME LOCATION:** Chrome Extension Service Worker Context.
 - **INPUT:** User task goal (initiated from Extension Action Popup or Options page).
 - **EXACT TECHNOLOGY:** TypeScript finite state machine running in the Manifest V3 background service worker.
-- **PROCESSING:** Orchestrates the closed-loop agent lifecycle across states: `IDLE` → `OBSERVING` → `AUTHORIZING` → `REASONING` → `EXECUTING` → `VERIFYING` → `COMPLETED` / `RECOVERY` / `ABORTED`.
+- **PROCESSING:** Orchestrates the closed-loop agent lifecycle across the canonical states defined in `docs/agent/STATE-MACHINE.md` (ADR 009): `IDLE` → `OBSERVING` → `AUTHORIZING` → `REASONING` → `EXECUTING` → `VERIFYING` → `COMPLETED`, with `RECOVERY` reached from any active state and `ABORTED` terminal. That document is the single source of truth for entry/exit conditions, allowed transitions, and failure/recovery behaviour.
 - **VALIDATION:** Strictly verifies that state transitions follow the DAG and that no state (e.g., privacy authorization or action validation) is bypassed.
 - **FAILURE / RECOVERY:** On unrecoverable errors or 3 consecutive verification failures, aborts execution and alerts the user.
 

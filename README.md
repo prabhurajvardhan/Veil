@@ -32,6 +32,15 @@ Implementation Code (/src/*)
 ```
 If a lower-level document conflicts with an upstream document, the upstream document is authoritative. Lower-level documents must be corrected rather than an engineer or agent inventing a workaround.
 
+### 1.1 Freeze Authority (binding)
+Whether a stage is **frozen** is recorded in exactly one place: its record in `docs/freezes/` (ADR 008). A `Status:` header on a stage document is **not** evidence of freeze and carries no authority. As of this revision **no stage is frozen**; see `STATUS.md` §2. Consequences:
+
+- Per `docs/engineering/WORKFLOW.md` §3 and §7, **implementation may not begin** while the upstream stages are unfrozen. Every task in `TASKS.md` is therefore `BLOCKED`.
+- **Never** set a stage document header to `FROZEN`, or a task to `READY`, to unblock work. A freeze is a completed validation stage, not a configuration flag.
+
+### 1.2 Single Definition of Agent State
+The M01 agent state machine has exactly **one** definition: [`docs/agent/STATE-MACHINE.md`](docs/agent/STATE-MACHINE.md) (ADR 009). `MODULES.md`, `docs/system-design/SYSTEM-DESIGN.md`, `docs/tasks/T002.md`, `docs/tasks/T015.md`, and `docs/employees/AI001.md` reference it and must not restate a competing model.
+
 ---
 
 ## 2. Progressive Knowledge Navigation
@@ -63,7 +72,8 @@ If you are a new AI or human employee, locate your **Employee Operating Manual**
 - [Module Registry](MODULES.md)
 - [Interface Contracts](INTERFACES.md)
 - [Privacy Boundary](docs/privacy/PRIVACY-BOUNDARY.md)
-- [Agent Loop & State Machine](docs/agent/STATE-MACHINE.md)
+- [Canonical M01 State Machine](docs/agent/STATE-MACHINE.md)
+- [Agent Loop (pipeline stages)](docs/agent/AGENT-LOOP.md)
 - [Project Status Board](STATUS.md)
 - [Integration Milestones](INTEGRATION.md)
 - [Task Registry](TASKS.md)

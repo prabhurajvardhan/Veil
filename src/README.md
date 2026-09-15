@@ -9,9 +9,9 @@
 > All module implementations under `/src/` must operate within the **Chrome Extension Manifest V3** runtime architecture (Service Worker context, Offscreen Document context, or Extension Popup UI). A standalone web application is **STRICTLY FORBIDDEN** as a replacement for any browser-agent capability. Web components outside the extension are auxiliary development tools/viewers only.
 
 ## Status
-**No implementation yet.** Do NOT begin implementation ahead of the freeze sequence and until a task reaches `READY` status in `TASKS.md`.
+**No implementation yet.** Do NOT begin implementation ahead of the freeze sequence. As of the current revision every stage is unfrozen and every task is `BLOCKED` (`TASKS.md` §2, `STATUS.md` §2).
 
-## Planned Module Layout (FROZEN)
+## Planned Module Layout (PROPOSED — not frozen; see `docs/freezes/MODULES.md`)
 Mirror the module registry in `MODULES.md` once implementation begins. The `Mxx` module IDs are the stable references for tasks, branches, and file scopes.
 
 ```text

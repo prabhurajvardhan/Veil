@@ -1,12 +1,13 @@
 # VEIL — Integration Milestones
 
-**Status:** FROZEN
-
+**Status:** NOT FROZEN — V0 draft. No freeze ledger record exists; per ADR 008 in `DECISIONS.md` integration milestones are not frozen.
 ## Milestone 0 (M0) — Executable Extension Foundation
-- **Entry Conditions:** Architecture frozen. Core interfaces defined.
+- **Entry Conditions:** Core interfaces defined. **Architecture frozen** — per the `docs/freezes/` ledger (ADR 008). **NOT currently met.** All stages are unfrozen, so M0 may not begin.
 - **Tasks Required:** T001, T002.
 - **Modules Involved:** M01.
+- **Consumer:** M02 (T003, T004) consumes the M0 shell; see `docs/tasks/T001.md` §17.
 - **Validation:** Extension loads in Chrome without errors. Background service worker registers successfully.
+- **Status:** BLOCKED — entry conditions unmet.
 
 ## Milestone 1 (M1) — Browser Observation
 - **Entry Conditions:** M0 verified.

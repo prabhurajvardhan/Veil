@@ -1,6 +1,6 @@
 # VEIL — Architecture Specification
 
-**Status:** FROZEN  
+**Status:** NOT FROZEN — V0 draft. Freeze state is authoritative only in `docs/freezes/ARCHITECTURE.md`; see ADR 008 in `DECISIONS.md`.
 **Purpose:** Authoritative definition of VEIL's platform, runtime boundaries, execution pipeline, and technology stack.
 
 ---
@@ -142,17 +142,17 @@ RE-OBSERVATION & VERIFICATION (M02 & M01)
 
 | Subsystem | Selected Technology | Status | Notes |
 |---|---|---|---|
-| **Product Format** | Chrome Extension | **FROZEN** | Primary product runtime. |
-| **Extension Standard** | Manifest V3 (MV3) | **FROZEN** | Service worker background architecture. |
-| **Target Browser** | Google Chrome (Desktop) | **FROZEN** | Chrome 116+ (supports `chrome.debugger` & Offscreen Documents). |
-| **Core Languages** | TypeScript / JavaScript | **FROZEN** | Strict type contracts across interfaces. |
-| **Build & Tooling** | Vite / esbuild / Tailwind CSS | **FROZEN** | Bundles background script and extension UI. |
-| **Browser Observation** | Chrome DevTools Protocol (`chrome.debugger`) | **FROZEN** | Direct CDP calls (`Page.captureScreenshot`, `DOM.getDocument`, `Accessibility.getFullAXTree`). |
-| **Browser Execution** | Chrome DevTools Protocol (`chrome.debugger`) | **FROZEN** | Hardware-level trusted events (`Input.dispatchMouseEvent`, `Input.dispatchKeyEvent`). |
-| **Local Visual AI** | ShowUI-2B via WebGPU / ONNX Runtime Web | **FROZEN** | Local on-device visual grounding. |
+| **Product Format** | Chrome Extension | **BINDING** | Primary product runtime. |
+| **Extension Standard** | Manifest V3 (MV3) | **BINDING** | Service worker background architecture. |
+| **Target Browser** | Google Chrome (Desktop) | **BINDING** | Chrome 116+ (supports `chrome.debugger` & Offscreen Documents). |
+| **Core Languages** | TypeScript / JavaScript | **BINDING** | Strict type contracts across interfaces. |
+| **Build & Tooling** | Vite / esbuild / Tailwind CSS | **BINDING** | Bundles background script and extension UI. |
+| **Browser Observation** | Chrome DevTools Protocol (`chrome.debugger`) | **BINDING** | Direct CDP calls (`Page.captureScreenshot`, `DOM.getDocument`, `Accessibility.getFullAXTree`). |
+| **Browser Execution** | Chrome DevTools Protocol (`chrome.debugger`) | **BINDING** | Hardware-level trusted events (`Input.dispatchMouseEvent`, `Input.dispatchKeyEvent`). |
+| **Local Visual AI** | ShowUI-2B via WebGPU / ONNX Runtime Web | **BINDING** | Local on-device visual grounding. |
 | **Local OCR** | TBD — requires explicit architecture/system-design decision | **TBD** | Candidates: Tesseract.js / WebAssembly OCR. Must run locally without cloud egress. |
-| **Local Privacy Engine** | Regex PII filters + DOM role detectors | **FROZEN** | Fail-closed deterministic local classification. |
-| **Visual Sanitization** | HTML5 Canvas API in Offscreen Document | **FROZEN** | Overlays solid `#000000` rectangles over flagged bounding boxes. |
+| **Local Privacy Engine** | Regex PII filters + DOM role detectors | **BINDING** | Fail-closed deterministic local classification. |
+| **Visual Sanitization** | HTML5 Canvas API in Offscreen Document | **BINDING** | Overlays solid `#000000` rectangles over flagged bounding boxes. |
 | **Remote Reasoner** | Cloud LLM Service | **TBD** | Exact model provider/API is TBD. Gateway interface locked to `SanitizedObservation` -> `ActionProposal`. |
 
 ---
