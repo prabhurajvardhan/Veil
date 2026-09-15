@@ -1,37 +1,32 @@
 # VEIL — Task Registry
 
-Status: **No tasks created yet.** Authoritative format below. Task creation follows Module Freeze (Phase 4) per the lifecycle (`docs/engineering/WORKFLOW.md`). Do not create implementation tasks before freezes are in place.
+This is the authoritative index of all engineering tasks.
+**Employees:** Find your assigned tasks here. If a task's STATE is `READY`, you may begin. Open the linked Task ID document for full implementation, boundary, and mandatory reference instructions.
 
-## Task Record Format
+## Task State Definitions
+- `PLANNED`: Task identified but dependencies unknown.
+- `ASSIGNED`: Owner allocated, but dependencies not met.
+- `BLOCKED`: Technical/Design/Interface dependencies are pending.
+- `READY`: All dependencies met. Owner is authorized to start implementation.
+- `IN_PROGRESS`: Owner is actively writing code.
+- `VALIDATED`: Code is complete, tests pass locally. Ready for handoff.
+- `INTEGRATION_READY`: PR opened and reviewed.
+- `INTEGRATED`: Merged to mainline.
+- `VERIFIED`: Confirmed working in the target Milestone.
 
-Every task records:
+## Active Tasks
 
-| Field | Meaning |
-|---|---|
-| TASK ID | e.g., `T001` |
-| MODULE | `M01`…`M11` (see `MODULES.md`) |
-| OBJECTIVE | What the implementation achieves |
-| OWNER | Employee ID (see `docs/employees/`) — one employee per active task |
-| BRANCH | `feature/<module-id>-<task-id>-<short-description>` per `docs/engineering/GIT-STRATEGY.md` |
-| INPUTS | Contracts/data this task consumes |
-| DEPENDENCIES | Tasks/modules that must precede or are touched |
-| FILES/SCOPE | Paths the worker may modify (module's allowed files) |
-| INTERFACE USED | Contract IDs from `INTERFACES.md` |
-| ACCEPTANCE CRITERIA | Objective, testable completion criteria |
-| VALIDATION | Tests to run (see `docs/engineering/QUALITY.md`, `docs/privacy/PRIVACY-TESTING.md`) |
-| STATUS | PLANNED / READY / IN_PROGRESS / BLOCKED / IMPLEMENTED / UNDER_REVIEW / VALIDATED / INTEGRATED / DONE |
+| TASK ID | TASK NAME | OWNER | MODULE | DEPENDENCIES | STATE |
+|---|---|---|---|---|---|
+| [T001](docs/tasks/T001.md) | Initialize Extension Shell | AI001 | M01 | None | READY |
+| [T002](docs/tasks/T002.md) | Implement Observation Capture | AI002 | M02 | T001 | BLOCKED |
+| *T003* | *(Pending Decomposition)* | AI003 | M03 | T002 | PLANNED |
+| *T004* | *(Pending Decomposition)* | AI004 | M04 | T002 | PLANNED |
+| *T005* | *(Pending Decomposition)* | AI005 | M06 | T003, T004 | PLANNED |
+| *T006* | *(Pending Decomposition)* | AI006 | M07 | T005 | PLANNED |
+| *T007* | *(Pending Decomposition)* | AI007 | M08 | T006 | PLANNED |
+| *T008* | *(Pending Decomposition)* | AI008 | M09 | T007 | PLANNED |
+| *T009* | *(Pending Decomposition)* | AI009 | M10 | T008 | PLANNED |
+| *T010* | *(Pending Decomposition)* | AI010 | M11 | T009 | PLANNED |
 
-## Rules (CONFIRMED)
-
-- One employee = one active task.
-- One task per branch.
-- Do not assign two workers to the same implementation boundary simultaneously unless explicitly coordinated.
-- Tasks must be small enough that an AI coding employee can execute them without redesigning the system.
-- Do not modify another worker's module (see employee files and `MODULES.md`).
-- Status transitions follow `docs/engineering/WORKFLOW.md` and the status vocabulary in former `09-team/status-protocol.md` (PLANNED…DONE).
-
-## Task Rows
-
-| TASK ID | MODULE | OBJECTIVE | OWNER | BRANCH | INPUTS | DEPENDENCIES | FILES/SCOPE | INTERFACE USED | ACCEPTANCE CRITERIA | VALIDATION | STATUS |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| *(none)* | | | | | | | | | | | |
+*(Tasks T003-T010 must be formally decomposed using `docs/tasks/TEMPLATE.md` before implementation begins).*

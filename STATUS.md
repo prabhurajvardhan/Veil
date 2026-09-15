@@ -1,68 +1,34 @@
-# VEIL — Project Status
+# VEIL — Operational Status Board
 
-Status rule: never claim a completion without evidence. Evidence lives in `docs/engineering/TRACEABILITY.md` (test/evidence columns) and PRs.
+This is the high-level control board for VEIL. It tracks global lifecycle stages, active milestones, and high-level blockers.
+*For granular task state, see [TASKS.md](TASKS.md).*
 
-## Current Phase
+## 1. Lifecycle Stage
+**CURRENT STAGE:** Task Decomposition & Employee Allocation.
+*Implementation is locked until task decomposition is complete.*
 
-Phase 1 — Requirements: **drafted, NOT frozen.** See `docs/engineering/WORKFLOW.md`.
-
-## Current Freeze
-
-**None.** Requirements, Architecture, System Design, and Modules are all NOT FROZEN. `docs/freezes/` records are all `NOT FROZEN`.
-
-## Completed
-
-- [x] Requirements drafted (REQ-001…REQ-019, PRIV-001…PRIV-008) — content from the project brief; not reviewed/signed off.
-- [x] Architecture V0 drafted (components, boundaries, trust boundaries).
-- [x] System design V0 drafted (16 stages, PROPOSED).
-- [x] Module registry drafted (M01–M11, PROPOSED).
-- [x] Privacy boundary + privacy testing scenarios defined.
-- [x] Traceability matrix skeleton created (evidence columns empty).
-
-## In Progress
-
-- None (single-pass restructure; no implementation).
-
-## Blocked
-
-- Nothing is implementation-blocked yet; requirements freeze has not occurred.
-
-## Next Actions
-
-1. Team review of `docs/requirements/REQUIREMENTS.md`.
-2. Requirements freeze (record in `docs/freezes/REQUIREMENTS.md`).
-3. Architecture V0 → V1 review → … → Architecture freeze.
-4. System design schemas (INTERFACES.md) finalized → System Design freeze.
-5. Module boundaries confirmed → Module freeze.
-6. Task planning in `TASKS.md`.
-7. Employee allocation in `docs/employees/`.
-
-## Validation Required
-
-- [UNKNOWN] Concrete non-functional targets (latency, RAM/CPU, throughput, offline behavior).
-- [UNKNOWN] Cloud reasoning model/provider.
-- [UNKNOWN] Target Chrome version(s)/OS.
-- [UNKNOWN] Staleness-detection mechanism.
-- [UNKNOWN] Fusion algorithm and confidence reconciliation.
-- [UNKNOWN] Sanitization per-type transformation rules.
-- [UNKNOWN] Transport protocol.
-- [VALIDATION REQUIRED] ShowUI-2B on-device performance/accuracy on target hardware.
-- [VALIDATION REQUIRED] Extension permission model feasibility.
-
-## Known Risks
-
-| Risk | Impact | Mitigation |
+| Stage | Status | Document |
 |---|---|---|
-| Local inference (ShowUI-2B) performance unknown | V1 loop latency | Measure early; keep model swappable per ADR-010 |
-| Sanitized context insufficient for reasoning | Task failure | V1 acceptance + payload-quality checks (ADR-008) |
-| Privacy-detection misses | Core promise broken | Fail-closed + redaction-verification + payload inspection |
-| No adversarial threat model | Security depth unclear | Document as UNKNOWN; define model with team |
-| Prompt injection via page content | Disclosed data / unauthorized action | Sanitization + local validation; advanced defense FUTURE |
+| Requirements | FROZEN | `docs/freezes/REQUIREMENTS.md` |
+| Architecture | FROZEN | `docs/architecture/ARCHITECTURE.md` |
+| System Design | FROZEN | `docs/system-design/SYSTEM-DESIGN.md` |
+| Module Classification | FROZEN | `MODULES.md` |
+| Interface Definition | FROZEN | `INTERFACES.md` |
+| Task Decomposition | IN_PROGRESS | `TASKS.md` |
+| Employee Allocation | IN_PROGRESS | `docs/employees/` |
+| Implementation | BLOCKED | `src/` |
 
-## Module Status
+## 2. Integration Milestones State
+*See [docs/integration/MILESTONES.md](docs/integration/MILESTONES.md) for definitions.*
 
-All M01–M11: **PLANNED** (no implementation). See `MODULES.md`.
+| Milestone | Target | Status | Blockers |
+|---|---|---|---|
+| M0: Extension Shell | M01 | PLANNED | T001 pending |
+| M1: Observation | M01, M02 | BLOCKED | M0 not integrated |
+| M2: Local Perception | M03, M04, M05, M06 | BLOCKED | M1 not integrated |
+| M3: Privacy Boundary | M07, M08 | BLOCKED | M2 not integrated |
+| M4: Remote Reasoning | M09 | BLOCKED | M3 not integrated |
+| M5: Closed Loop | M10, M11 | BLOCKED | M4 not integrated |
 
-## Task Status
-
-**No tasks created yet.** Task creation follows Module Freeze (per lifecycle, `docs/engineering/WORKFLOW.md`). See `TASKS.md`.
+## 3. Global Blockers & Escalations
+- **Blocker 1:** Implementation phase cannot begin until tasks T001 through T010 are fully decomposed and assigned in `TASKS.md`.
