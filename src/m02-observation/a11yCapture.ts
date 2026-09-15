@@ -5,7 +5,7 @@
  */
 
 import { CDPSession } from './cdpSession';
-import { A11yCaptureError, CDPGetFullAXTreeResult } from './types';
+import { A11yCaptureError, CDP, CDPGetFullAXTreeResult } from './types';
 
 /**
  * Validates that an object satisfies minimal structural constraints of CDP.Accessibility.AXNode.

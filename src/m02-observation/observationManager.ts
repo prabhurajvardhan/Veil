@@ -9,7 +9,7 @@ import { captureScreenshot } from './screenshotCapture';
 import { captureDOMTree } from './domCapture';
 import { captureA11yTree } from './a11yCapture';
 import {
- 
+  CDP,
   ChromeDebuggerAPI,
   DOMCaptureOptions,
   ObservationError,

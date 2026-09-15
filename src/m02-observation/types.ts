@@ -4,6 +4,29 @@
  * Authority: INTERFACES.md, MODULES.md, docs/system-design/SYSTEM-DESIGN.md
  */
 
+export namespace CDP {
+  export namespace DOM {
+    export interface Node {
+      nodeId: number;
+      backendNodeId?: number;
+      nodeType: number;
+      nodeName: string;
+      localName?: string;
+      nodeValue?: string;
+      childNodeCount?: number;
+      children?: Node[];
+      [key: string]: unknown;
+    }
+  }
+  export namespace Accessibility {
+    export interface AXNode {
+      nodeId: string;
+      ignored: boolean;
+      [key: string]: unknown;
+    }
+  }
+}
+
 /**
  * Supported image formats for raw visual capture
  */
