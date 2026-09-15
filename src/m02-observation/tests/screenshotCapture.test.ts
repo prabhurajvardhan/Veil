@@ -22,6 +22,7 @@ import {
   CDPCommandError,
   ChromeDebuggerAPI,
   ObservationError,
+  RawObservation,
   ScreenshotCaptureError,
   ScreenshotData,
 } from '../types';
@@ -198,6 +199,24 @@ export async function runAllTests(): Promise<{ passed: number; failed: number; t
     assertEqual(session.isAttached(), true, 'Still attached after secondary call');
   });
 
+  await test('CDPSession attach fails closed when debugger API attach rejects', async () => {
+    const mock = createMockDebuggerAPI();
+    mock.api.attach = async () => {
+      throw new Error('Another debugger is already attached');
+    };
+    const session = new CDPSession({ tabId: 42, debuggerApi: mock.api });
+
+    let threw = false;
+    try {
+      await session.attach();
+    } catch (err) {
+      threw = true;
+      assert(err instanceof CDPAttachmentError, 'Throws CDPAttachmentError on attach failure');
+      assert(session.isAttached() === false, 'Session remains unattached');
+    }
+    assert(threw, 'attach() must throw on failure');
+  });
+
   await test('CDPSession detach cleans up successfully', async () => {
     const mock = createMockDebuggerAPI();
     const session = new CDPSession({ tabId: 42, debuggerApi: mock.api });
@@ -365,6 +384,48 @@ export async function runAllTests(): Promise<{ passed: number; failed: number; t
     assertEqual(params.quality, 85, 'Command sent quality: 85');
   });
 
+  await test('captureScreenshot clamps quality bounds correctly (0-100)', async () => {
+    const mock = createMockDebuggerAPI();
+    const session = new CDPSession({ tabId: 42, debuggerApi: mock.api });
+    await session.attach();
+
+    // Test quality > 100 clamped to 100
+    await captureScreenshot(session, { format: 'webp', quality: 150 });
+    let log = mock.getCommandLog();
+    let captureCommand = log[log.length - 1];
+    assertEqual((captureCommand.params as { quality: number }).quality, 100, 'Quality 150 clamped to 100');
+
+    // Test quality < 0 clamped to 0
+    await captureScreenshot(session, { format: 'webp', quality: -20 });
+    log = mock.getCommandLog();
+    captureCommand = log[log.length - 1];
+    assertEqual((captureCommand.params as { quality: number }).quality, 0, 'Quality -20 clamped to 0');
+  });
+
+  await test('captureScreenshot passes clip, fromSurface, and captureBeyondViewport options', async () => {
+    const mock = createMockDebuggerAPI();
+    const session = new CDPSession({ tabId: 42, debuggerApi: mock.api });
+    await session.attach();
+
+    await captureScreenshot(session, {
+      fromSurface: true,
+      captureBeyondViewport: false,
+      clip: { x: 10, y: 20, width: 100, height: 200, scale: 1 },
+    });
+
+    const log = mock.getCommandLog();
+    const captureCommand = log[log.length - 1];
+    const params = captureCommand.params as {
+      fromSurface: boolean;
+      captureBeyondViewport: boolean;
+      clip: { x: number; y: number; width: number; height: number; scale: number };
+    };
+    assertEqual(params.fromSurface, true, 'fromSurface was passed');
+    assertEqual(params.captureBeyondViewport, false, 'captureBeyondViewport was passed');
+    assertEqual(params.clip.x, 10, 'clip.x was passed');
+    assertEqual(params.clip.width, 100, 'clip.width was passed');
+  });
+
   await test('captureScreenshot fails closed if CDP returns empty data', async () => {
     const mock = createMockDebuggerAPI();
     mock.setMockCommand('Page.captureScreenshot', { data: '' });
@@ -446,6 +507,82 @@ export async function runAllTests(): Promise<{ passed: number; failed: number; t
 
     await manager.detachAll();
     assertEqual(manager.isAttached(1), false, 'Tab 1 detached after detachAll()');
+  });
+
+  await test('ObservationManager propagates detachment and unrecoverable error callbacks', async () => {
+    const mock = createMockDebuggerAPI();
+    const detachedTabs: number[] = [];
+    const unrecoverableTabs: number[] = [];
+
+    const manager = new ObservationManager({
+      debuggerApi: mock.api,
+      onSessionDetached: (tabId) => detachedTabs.push(tabId),
+      onUnrecoverableError: (tabId) => unrecoverableTabs.push(tabId),
+    });
+
+    await manager.attach(99);
+    assertEqual(manager.isAttached(99), true, 'Tab 99 attached');
+
+    // Trigger first unexpected detach (auto-reattaches)
+    mock.triggerUnexpectedDetach(99, 'target_crashed');
+    const session = manager.getOrCreateSession(99);
+    await session.waitForPendingReattach();
+    assertEqual(detachedTabs.length, 1, 'onSessionDetached was called');
+    assertEqual(detachedTabs[0], 99, 'Detached tab is 99');
+
+    // Trigger second unexpected detach (fails unrecoverably, triggers unrecoverable callback)
+    mock.triggerUnexpectedDetach(99, 'target_crashed_again');
+    await session.waitForPendingReattach();
+    assertEqual(unrecoverableTabs.length, 1, 'onUnrecoverableError was called');
+    assertEqual(unrecoverableTabs[0], 99, 'Unrecoverable tab is 99');
+  });
+
+  // --- Suite 6: INTERFACES.md Contract Structural Verification ---
+  console.log('\n[Suite 6: INTERFACES.md Contract Structural Verification]');
+
+  await test('ScreenshotData strictly conforms to RawObservation screenshot contract', () => {
+    // Structural compatibility assertion: ScreenshotData must satisfy RawObservation['screenshot']
+    const screenshotSample: ScreenshotData = {
+      format: 'png',
+      data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      viewport: {
+        width: 1920,
+        height: 1080,
+        dpr: 1.0,
+      },
+    };
+
+    // Verify properties match INTERFACES.md definition
+    assertEqual(screenshotSample.format, 'png', 'Screenshot format valid');
+    assert(typeof screenshotSample.data === 'string', 'Screenshot data is base64 string');
+    assertEqual(screenshotSample.viewport.width, 1920, 'Viewport width valid');
+    assertEqual(screenshotSample.viewport.height, 1080, 'Viewport height valid');
+    assertEqual(screenshotSample.viewport.dpr, 1.0, 'Viewport DPR valid');
+
+    // Verify RawObservation contract can be constructed with ScreenshotData and T004 contract types
+    const rawObservationRecord: RawObservation = {
+      observation_id: generateObservationId(),
+      timestamp: Date.now(),
+      screenshot: screenshotSample,
+      dom_tree: {
+        nodeId: 1,
+        nodeType: 9,
+        nodeName: '#document',
+      },
+      a11y_tree: [
+        {
+          nodeId: 'ax-1',
+          ignored: false,
+          role: { type: 'role', value: 'RootWebArea' },
+        },
+      ],
+    };
+
+    assert(Boolean(rawObservationRecord.observation_id), 'RawObservation has observation_id');
+    assert(rawObservationRecord.timestamp > 0, 'RawObservation has positive timestamp');
+    assert(rawObservationRecord.screenshot.viewport.dpr === 1.0, 'RawObservation contains screenshot');
+    assertEqual(rawObservationRecord.dom_tree.nodeName, '#document', 'RawObservation dom_tree conforms');
+    assertEqual(rawObservationRecord.a11y_tree[0].role?.value, 'RootWebArea', 'RawObservation a11y_tree conforms');
   });
 
   console.log(`\nTest Execution Summary: ${passed} Passed, ${failed} Failed of ${passed + failed} Total Tests\n`);
