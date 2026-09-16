@@ -1,11 +1,23 @@
 import { VeilOrchestrator } from './orchestrator';
 import { ReasoningGateway } from '../m09-reasoning/reasoningGateway';
 import { MockReasoningProvider } from '../m09-reasoning/providers/mockReasoningProvider';
+import { HttpReasoningProvider, resolveReasoningConfig } from '../m09-reasoning/providers/httpReasoningProvider';
 
 console.log('VEIL Service Worker initialized');
 
-// Configure M09 ReasoningGateway with MockReasoningProvider for autonomous prototype execution
-const reasoningProvider = new MockReasoningProvider();
+// Configure M09 ReasoningGateway:
+// Automatically uses the real HttpReasoningProvider if an API key (Groq, HuggingFace, OpenAI)
+// is available; otherwise falls back cleanly to MockReasoningProvider for deterministic tests/offline prototype execution.
+const reasoningConfig = resolveReasoningConfig();
+const reasoningProvider = reasoningConfig.apiKey
+  ? new HttpReasoningProvider(reasoningConfig)
+  : new MockReasoningProvider();
+
+console.log(`[VEIL] Active Reasoning Provider: ${reasoningProvider.providerId}`);
+if (reasoningProvider instanceof HttpReasoningProvider) {
+  console.log(`[VEIL] Live Endpoint: ${reasoningProvider.endpoint} (Model: ${reasoningProvider.modelName})`);
+}
+
 const reasoningGateway = new ReasoningGateway({ provider: reasoningProvider });
 const orchestrator = new VeilOrchestrator({ reasoningGateway });
 

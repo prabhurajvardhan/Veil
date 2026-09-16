@@ -112,7 +112,7 @@ export interface ReasoningProvider {
  * HTTP Reasoning Provider configuration options.
  */
 export interface HttpReasoningProviderConfig {
-  endpoint: string;
+  endpoint?: string;
   apiKey?: string;
   modelName?: string;
   timeoutMs?: number;

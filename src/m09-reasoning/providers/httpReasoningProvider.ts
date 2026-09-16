@@ -18,7 +18,110 @@ import {
 } from '../errors';
 import { VEIL_SYSTEM_PROMPT } from '../systemPrompt';
 
+export const DEFAULT_GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+export const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
 export const DEFAULT_HTTP_TIMEOUT_MS = 30000;
+
+/**
+ * Safely resolves environment variables across Vite (import.meta.env) and Node (process.env).
+ */
+export function getEnvVar(key: string): string | undefined {
+  try {
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+      const env = (import.meta as any).env;
+      if (env[key]) return env[key];
+      if (env[`VITE_${key}`]) return env[`VITE_${key}`];
+    }
+  } catch {
+    // ignore environment lookup errors
+  }
+
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      if (process.env[key]) return process.env[key];
+      if (process.env[`VITE_${key}`]) return process.env[`VITE_${key}`];
+    }
+  } catch {
+    // ignore environment lookup errors
+  }
+
+  return undefined;
+}
+
+/**
+ * Resolves complete HTTP reasoning provider configuration with intelligent defaults for Groq, OpenAI, and Hugging Face.
+ */
+export function resolveReasoningConfig(
+  config?: Partial<HttpReasoningProviderConfig>
+): Required<Pick<HttpReasoningProviderConfig, 'endpoint' | 'modelName' | 'timeoutMs' | 'systemPrompt' | 'format'>> & {
+  apiKey?: string;
+  fetchFn?: typeof fetch;
+  customHeaders?: Record<string, string>;
+  temperature?: number;
+} {
+  const apiKey =
+    config?.apiKey ||
+    getEnvVar('GROQ_API_KEY') ||
+    getEnvVar('VITE_GROQ_API_KEY') ||
+    getEnvVar('HF_TOKEN') ||
+    getEnvVar('VITE_HF_TOKEN') ||
+    getEnvVar('HUGGINGFACE_API_KEY') ||
+    getEnvVar('OPENAI_API_KEY') ||
+    getEnvVar('VITE_OPENAI_API_KEY');
+
+  const isGroq =
+    (apiKey && apiKey.startsWith('gsk_')) ||
+    (config?.endpoint && config.endpoint.includes('groq.com')) ||
+    (!config?.endpoint && !!(getEnvVar('GROQ_API_KEY') || getEnvVar('VITE_GROQ_API_KEY')));
+
+  const isOpenAI =
+    (apiKey && apiKey.startsWith('sk-') && !isGroq) ||
+    (config?.endpoint && config.endpoint.includes('openai.com'));
+
+  let endpoint =
+    config?.endpoint ||
+    getEnvVar('LLM_ENDPOINT') ||
+    getEnvVar('VITE_LLM_ENDPOINT') ||
+    getEnvVar('HF_INFERENCE_ENDPOINT') ||
+    getEnvVar('VITE_HF_INFERENCE_ENDPOINT');
+
+  if (!endpoint || endpoint.trim() === '') {
+    if (isOpenAI) {
+      endpoint = 'https://api.openai.com/v1/chat/completions';
+    } else {
+      // Default to Groq high-speed Llama-3.3 inference endpoint
+      endpoint = DEFAULT_GROQ_ENDPOINT;
+    }
+  }
+
+  let modelName =
+    config?.modelName ||
+    getEnvVar('GROQ_MODEL') ||
+    getEnvVar('HF_MODEL_NAME') ||
+    getEnvVar('MODEL_NAME');
+
+  if (!modelName || modelName.trim() === '') {
+    if (endpoint.includes('groq.com') || isGroq) {
+      modelName = DEFAULT_GROQ_MODEL;
+    } else if (endpoint.includes('openai.com') || isOpenAI) {
+      modelName = 'gpt-4o';
+    } else {
+      modelName = DEFAULT_GROQ_MODEL;
+    }
+  }
+
+  return {
+    endpoint: endpoint.trim(),
+    apiKey: apiKey ? apiKey.trim() : undefined,
+    modelName: modelName.trim(),
+    timeoutMs: config?.timeoutMs && config.timeoutMs > 0 ? config.timeoutMs : DEFAULT_HTTP_TIMEOUT_MS,
+    fetchFn: config?.fetchFn,
+    customHeaders: config?.customHeaders,
+    systemPrompt: config?.systemPrompt || VEIL_SYSTEM_PROMPT,
+    temperature: config?.temperature ?? 0.1,
+    format: config?.format || 'default',
+  };
+}
 
 /**
  * Extracts the model's generated payload from various provider response envelopes
@@ -116,34 +219,51 @@ export function extractJsonString(text: string): unknown {
 export class HttpReasoningProvider implements ReasoningProvider {
   public readonly providerId = 'HttpReasoningProvider';
 
-  private readonly endpoint: string;
-  private readonly apiKey?: string;
-  private readonly modelName?: string;
-  private readonly timeoutMs: number;
+  public readonly endpoint: string;
+  public readonly apiKey?: string;
+  public readonly modelName: string;
+  public readonly timeoutMs: number;
+  public readonly systemPrompt: string;
+  public readonly temperature?: number;
+  public readonly format: 'openai' | 'messages' | 'default';
+
   private readonly fetchFn: typeof fetch;
   private readonly customHeaders: Record<string, string>;
-  private readonly systemPrompt: string;
-  private readonly temperature?: number;
-  private readonly format?: 'openai' | 'messages' | 'default';
 
-  constructor(config: HttpReasoningProviderConfig) {
-    if (!config || !config.endpoint || typeof config.endpoint !== 'string' || config.endpoint.trim() === '') {
+  constructor(config?: Partial<HttpReasoningProviderConfig>) {
+    if (config && typeof config.endpoint === 'string' && config.endpoint.trim() === '') {
       throw new ReasoningProviderError('HttpReasoningProvider requires a valid endpoint URL');
     }
 
-    this.endpoint = config.endpoint.trim();
-    this.apiKey = config.apiKey;
-    this.modelName = config.modelName;
-    this.timeoutMs = config.timeoutMs && config.timeoutMs > 0 ? config.timeoutMs : DEFAULT_HTTP_TIMEOUT_MS;
-    this.fetchFn = config.fetchFn || (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : (fetch as any));
-    this.customHeaders = config.customHeaders || {};
-    this.systemPrompt = config.systemPrompt || VEIL_SYSTEM_PROMPT;
-    this.temperature = config.temperature;
-    this.format = config.format || 'default';
+    const resolved = resolveReasoningConfig(config);
+
+    this.endpoint = resolved.endpoint;
+    this.apiKey = resolved.apiKey;
+    this.modelName = resolved.modelName;
+    this.timeoutMs = resolved.timeoutMs;
+    this.fetchFn =
+      resolved.fetchFn ||
+      (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : (fetch as any));
+    this.customHeaders = resolved.customHeaders || {};
+    this.systemPrompt = resolved.systemPrompt;
+    this.temperature = resolved.temperature;
+    this.format = resolved.format;
+  }
+
+  public getEndpoint(): string {
+    return this.endpoint;
+  }
+
+  public getModelName(): string {
+    return this.modelName;
   }
 
   public getSystemPrompt(): string {
     return this.systemPrompt;
+  }
+
+  public hasApiKey(): boolean {
+    return Boolean(this.apiKey && this.apiKey.trim().length > 0);
   }
 
   public async proposeAction(request: ReasoningRequest): Promise<unknown> {
