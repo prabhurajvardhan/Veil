@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VEIL Test Target Page</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+      padding: 32px;
+      width: 100%;
+      max-width: 420px;
+    }
+    h1 {
+      font-size: 20px;
+      margin-top: 0;
+      margin-bottom: 8px;
+      color: #0f172a;
+    }
+    p.desc {
+      font-size: 14px;
+      color: #64748b;
+      margin-bottom: 24px;
+    }
+    .field {
+      margin-bottom: 18px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 14px;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus {
+      border-color: #0284c7;
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+    }
+    button {
+      width: 100%;
+      background: #0284c7;
+      color: white;
+      border: none;
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover {
+      background: #0369a1;
+    }
+    button:active {
+      transform: scale(0.99);
+    }
+    .result-box {
+      margin-top: 20px;
+      padding: 14px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+      color: #166534;
+      font-size: 14px;
+      display: none;
+      word-break: break-all;
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #e0f2fe;
+      color: #0369a1;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">VEIL Verification Page</span>
+    <h1>Test Target Form</h1>
+    <p class="desc">Standard verification target containing an input field and submit button.</p>
+
+    <div class="field">
+      <label for="name-field">Name</label>
+      <input id="name-field" type="text" placeholder="Name" />
+    </div>
+
+    <button id="submit-button" type="submit" onclick="handleSubmit()">Submit</button>
+
+    <div id="submit-result" class="result-box"></div>
+  </div>
+
+  <script>
+    function handleSubmit() {
+      const input = document.getElementById('name-field');
+      const val = input ? input.value : '';
+      const res = document.getElementById('submit-result');
+      res.style.display = 'block';
+      if (val && val.trim()) {
+        res.innerHTML = '<strong>Success!</strong> Submitted name: <span id="submitted-val">' + escapeHtml(val) + '</span>';
+      } else {
+        res.innerHTML = '<strong>Success!</strong> Submit button clicked!';
+      }
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+  </script>
+</body>
+</html>

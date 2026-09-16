@@ -50,4 +50,5 @@ export interface OrchestratorOptions {
   validationOptions?: ValidationOptions;
   onStepComplete?: (stepRecord: StepRecord) => void;
   onStateChange?: (state: AgentState) => void;
+  onPhaseChange?: (phase: string, details?: Record<string, unknown>) => void;
 }

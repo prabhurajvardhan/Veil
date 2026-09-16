@@ -94,6 +94,11 @@ export class VeilOrchestrator {
     const maxSteps = options?.maxSteps ?? 10;
     const history: StepRecord[] = [];
 
+    if (this.stateMachine.getState() === 'COMPLETED' || this.stateMachine.getState() === 'ABORTED') {
+      this.stateMachine.transition('IDLE');
+      if (options?.onStateChange) options.onStateChange('IDLE');
+    }
+
     const reasoner = options?.reasoningGateway ?? this.defaultReasoner;
     if (!reasoner) {
       return {
@@ -117,8 +122,11 @@ export class VeilOrchestrator {
         // 1. OBSERVING: Capture and ground browser state
         // ==========================================================
         this.transition('OBSERVING', options?.onStateChange);
+        options?.onPhaseChange?.(stepIndex > 1 ? 'Re-observing' : 'Observing', { stepIndex });
 
         const rawObs = await this.acquireRawObservation(tabId, stepIndex, options);
+
+        options?.onPhaseChange?.('Perceiving', { stepIndex });
 
         // M04: DOM/A11y Grounding
         const domEvidence = this.domGrounder.ground(rawObs.dom_tree, rawObs.a11y_tree, {
@@ -172,6 +180,7 @@ export class VeilOrchestrator {
         // 2. AUTHORIZING: Local Privacy Classification & Sanitization
         // ==========================================================
         this.transition('AUTHORIZING', options?.onStateChange);
+        options?.onPhaseChange?.('Privacy filtering', { stepIndex });
 
         const classification = this.privacyClassifier.classify(fusionResult);
         const sanitizedObs = await sanitizeObservation(fusionResult, classification);
@@ -183,6 +192,7 @@ export class VeilOrchestrator {
         // 3. REASONING: Propose Action (M09 Gateway)
         // ==========================================================
         this.transition('REASONING', options?.onStateChange);
+        options?.onPhaseChange?.('Reasoning', { stepIndex });
 
         const proposal = await reasoner.proposeAction(sanitizedObs, goal);
 
@@ -190,9 +200,12 @@ export class VeilOrchestrator {
         // 4. EXECUTING: Local Action Validation (M10) + Execution (M11)
         // ==========================================================
         this.transition('EXECUTING', options?.onStateChange);
+        options?.onPhaseChange?.('Validating', { stepIndex, targetId: proposal.target_id, actionType: proposal.action_type });
 
         // Authorize action via Local Action Guard (T013)
         const validatedAction = await validateAction(proposal, sanitizedObs, options?.validationOptions);
+
+        options?.onPhaseChange?.('Executing', { stepIndex, action: validatedAction.action_type });
 
         // Execute authorized action via Browser Executor (T014)
         const execResult = await executor.execute(validatedAction);
@@ -221,6 +234,7 @@ export class VeilOrchestrator {
 
         if (execResult.status !== 'SUCCESS') {
           this.stateMachine.registerFailure();
+          options?.onPhaseChange?.(`Failed: ${execResult.error_message || execResult.status}`, { stepIndex });
           return {
             goal,
             finalState: this.stateMachine.getState(),
@@ -234,6 +248,7 @@ export class VeilOrchestrator {
         // If action was DONE, task is successfully completed!
         if (validatedAction.action_type === 'DONE') {
           this.transition('COMPLETED', options?.onStateChange);
+          options?.onPhaseChange?.('Completed', { stepsExecuted: stepIndex });
           return {
             goal,
             finalState: 'COMPLETED',
@@ -249,6 +264,7 @@ export class VeilOrchestrator {
         }
 
         // Loop continues -> will enter OBSERVING with a NEW observation_id in next iteration
+        options?.onPhaseChange?.('Re-observing', { nextStepIndex: stepIndex + 1 });
       }
 
       // If loop finished without reaching DONE, abort or finish with max steps

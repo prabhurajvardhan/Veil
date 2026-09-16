@@ -119,7 +119,7 @@ export function resolveReasoningConfig(
     customHeaders: config?.customHeaders,
     systemPrompt: config?.systemPrompt || VEIL_SYSTEM_PROMPT,
     temperature: config?.temperature ?? 0.1,
-    format: config?.format || 'default',
+    format: config?.format || (isGroq || isOpenAI || endpoint.includes('openai.com') || endpoint.includes('groq.com') ? 'openai' : 'default'),
   };
 }
 
@@ -300,25 +300,19 @@ export class HttpReasoningProvider implements ReasoningProvider {
       },
       {
         role: 'user',
-        content: `User Goal: ${request.user_goal}\n\nSanitized Observation:\n${userPromptContent}\n\nPropose the next declarative action as raw JSON adhering strictly to the VEIL ActionProposal schema.`,
+        content: `User Goal: ${request.user_goal}\n\nSanitized Observation:\n${userPromptContent}\n\nPropose the next declarative action as raw JSON adhering strictly to the VEIL ActionProposal schema. You MUST use observation_id: "${request.observation_id}".`,
       },
     ];
 
-    let payload: Record<string, unknown>;
-    if (this.format === 'openai') {
-      payload = {
-        model: this.modelName || 'default',
-        messages,
-        ...(this.temperature !== undefined ? { temperature: this.temperature } : {}),
-      };
-    } else {
-      payload = {
-        model: this.modelName || 'default',
-        messages,
-        system_instruction: this.systemPrompt,
-        request,
-        ...(this.temperature !== undefined ? { temperature: this.temperature } : {}),
-      };
+    const payload: Record<string, unknown> = {
+      model: this.modelName || 'default',
+      messages,
+      request,
+      ...(this.temperature !== undefined ? { temperature: this.temperature } : {}),
+    };
+
+    if (this.format !== 'openai') {
+      payload.system_instruction = this.systemPrompt;
     }
 
     try {
