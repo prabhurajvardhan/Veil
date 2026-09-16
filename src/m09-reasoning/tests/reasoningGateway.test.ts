@@ -41,6 +41,7 @@ import {
   ReasoningRequest,
   ReasoningTimeoutError,
   SecurityBoundaryViolationError,
+  VEIL_SYSTEM_PROMPT,
 } from '../index';
 
 export async function runT012Tests(): Promise<{ name: string; passed: boolean; error?: string }[]> {
@@ -763,6 +764,466 @@ export async function runT012Tests(): Promise<{ name: string; passed: boolean; e
     for (const secret of SENSITIVE_STRINGS) {
       assert(!fullJson.includes(secret), `Sensitive string '${secret}' must not appear anywhere in JSON payload`);
     }
+  });
+
+  // =========================================================================
+  // REAL LLM REASONING TESTS (Tasks A through J)
+  // =========================================================================
+
+  // A. System prompt is present in outbound LLM request
+  await test('A. System prompt is present in outbound LLM request', async () => {
+    let capturedBody: any = null;
+    const mockFetch = async (input: any, init: any) => {
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: JSON.stringify({
+                  action_id: 'act-sys-1',
+                  observation_id: 'obs-uuid-1001',
+                  action_type: 'DONE',
+                  intended_effect: 'Verified system prompt',
+                }),
+              },
+            },
+          ],
+        }),
+      } as any;
+    };
+
+    const provider = new HttpReasoningProvider({
+      endpoint: 'https://api.llm-provider.com/v1/chat/completions',
+      fetchFn: mockFetch,
+    });
+    const gateway = new ReasoningGateway({ provider });
+    const obs = createValidSanitizedObservation();
+
+    const proposal = await gateway.proposeAction(obs, 'Verify prompt');
+
+    assert(capturedBody !== null, 'Outbound HTTP payload must be captured');
+    assert(Array.isArray(capturedBody.messages), 'Payload must contain messages array');
+
+    const systemMsg = capturedBody.messages.find((m: any) => m.role === 'system');
+    assert(!!systemMsg, 'Payload must contain system message');
+    assert(systemMsg.content.includes("VEIL's browser reasoning engine"), 'System message contains VEIL role');
+    assert(systemMsg.content.includes('zero browser execution authority'), 'System message enforces zero browser execution authority');
+    assert(systemMsg.content.includes('never invent target_id values'), 'System message forbids inventing target_id values');
+    assert(systemMsg.content.includes('propose exactly ONE next declarative action'), 'System message restricts to one action');
+    assert(systemMsg.content.includes('CLICK requires target_id'), 'System message enforces CLICK target_id constraint');
+    assert(systemMsg.content.includes('TYPE requires target_id and parameters.text'), 'System message enforces TYPE text constraint');
+    assert(systemMsg.content.includes('KEY_PRESS requires parameters.key'), 'System message enforces KEY_PRESS constraint');
+    assert(systemMsg.content.includes('NAVIGATE requires parameters.url'), 'System message enforces NAVIGATE constraint');
+    assert(systemMsg.content.includes('Never reconstruct, infer, or request redacted/private information'), 'System message enforces privacy');
+
+    assertEqual(proposal.action_type, 'DONE', 'ActionProposal successfully created');
+  });
+
+  // B. Sanitized ReasoningRequest is included in outbound request
+  await test('B. Sanitized ReasoningRequest is included in outbound request', async () => {
+    let capturedBody: any = null;
+    const mockFetch = async (input: any, init: any) => {
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: JSON.stringify({
+                  action_id: 'act-req-1',
+                  observation_id: 'obs-uuid-1001',
+                  action_type: 'CLICK',
+                  target_id: 'btn-search',
+                  intended_effect: 'Click search flight',
+                }),
+              },
+            },
+          ],
+        }),
+      } as any;
+    };
+
+    const provider = new HttpReasoningProvider({
+      endpoint: 'https://api.llm-provider.com/v1/chat/completions',
+      fetchFn: mockFetch,
+    });
+    const gateway = new ReasoningGateway({ provider });
+    const obs = createValidSanitizedObservation();
+
+    await gateway.proposeAction(obs, 'Book flight to Tokyo');
+
+    assert(capturedBody !== null, 'Outbound payload must exist');
+
+    // Check user message contains goal and nodes
+    const userMsg = capturedBody.messages.find((m: any) => m.role === 'user');
+    assert(!!userMsg, 'Payload must contain user message');
+    assert(userMsg.content.includes('Book flight to Tokyo'), 'User message contains user goal');
+    assert(userMsg.content.includes('obs-uuid-1001'), 'User message contains observation_id');
+    assert(userMsg.content.includes('btn-search'), 'User message contains node target_id');
+
+    // Check structured request is also present
+    assert(!!capturedBody.request, 'Payload contains structured request object');
+    assertEqual(capturedBody.request.observation_id, 'obs-uuid-1001', 'Observation ID preserved');
+    assertEqual(capturedBody.request.user_goal, 'Book flight to Tokyo', 'User goal preserved');
+    assertEqual(capturedBody.request.nodes.length, 3, 'All 3 sanitized nodes present in request');
+  });
+
+  // C. Raw DOM/A11y/screenshot/OCR/privacy-classification data cannot be introduced into the reasoning request
+  await test('C. Raw DOM/A11y/screenshot/OCR/privacy-classification data cannot be introduced into reasoning request', async () => {
+    let fetchCalled = false;
+    const mockFetch = async () => {
+      fetchCalled = true;
+      return { ok: true, status: 200, json: async () => ({}) } as any;
+    };
+
+    const provider = new HttpReasoningProvider({
+      endpoint: 'https://api.llm-provider.com/v1/chat/completions',
+      fetchFn: mockFetch,
+    });
+    const gateway = new ReasoningGateway({ provider });
+
+    const rawLeaks: Partial<SanitizedObservation>[] = [
+      { dom_tree: { tag: 'body' } } as any,
+      { a11y_tree: { role: 'button' } } as any,
+      { raw_screenshot: 'image_bytes' } as any,
+      { ocr_evidence: [{ text: 'ocr' }] } as any,
+      { sensitive_target_ids: ['id-1'] } as any,
+      { classification_results: {} } as any,
+    ];
+
+    for (const leak of rawLeaks) {
+      const dirty = { ...createValidSanitizedObservation(), ...leak };
+      let caught = false;
+      try {
+        await gateway.proposeAction(dirty as any, 'Goal');
+      } catch (err) {
+        caught = err instanceof SecurityBoundaryViolationError;
+      }
+      assert(caught, `Raw leak ${Object.keys(leak).join(',')} must throw SecurityBoundaryViolationError`);
+    }
+
+    assertEqual(fetchCalled, false, 'No HTTP request must be dispatched when raw leak is detected');
+  });
+
+  // D. Real-provider response extraction works across different formats (OpenAI, Anthropic, HuggingFace, markdown-fenced)
+  await test('D. Real-provider response extraction works across OpenAI, Anthropic, HuggingFace, and markdown code blocks', async () => {
+    // 1. OpenAI Chat format with markdown code fences
+    const mockFetchOpenAIMarkdown = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'chatcmpl-test',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: '```json\n{\n  "action_id": "act-md-1",\n  "observation_id": "obs-uuid-1001",\n  "action_type": "CLICK",\n  "target_id": "btn-search",\n  "intended_effect": "Click search button"\n}\n```',
+            },
+          },
+        ],
+      }),
+    });
+
+    const p1 = new HttpReasoningProvider({ endpoint: 'https://mock.api/v1', fetchFn: mockFetchOpenAIMarkdown as any });
+    const g1 = new ReasoningGateway({ provider: p1 });
+    const obs = createValidSanitizedObservation();
+    const res1 = await g1.proposeAction(obs, 'Search');
+    assertEqual(res1.action_type, 'CLICK', 'Extracted from markdown fenced OpenAI response');
+    assertEqual(res1.target_id, 'btn-search', 'Target ID extracted correctly');
+
+    // 2. Anthropic Messages format
+    const mockFetchAnthropic = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              action_id: 'act-claude-1',
+              observation_id: 'obs-uuid-1001',
+              action_type: 'NAVIGATE',
+              parameters: { url: 'https://airline.example.com' },
+              intended_effect: 'Navigate to airline',
+            }),
+          },
+        ],
+      }),
+    });
+
+    const p2 = new HttpReasoningProvider({ endpoint: 'https://mock.api/v1', fetchFn: mockFetchAnthropic as any });
+    const g2 = new ReasoningGateway({ provider: p2 });
+    const res2 = await g2.proposeAction(obs, 'Navigate');
+    assertEqual(res2.action_type, 'NAVIGATE', 'Extracted from Anthropic format');
+    assertEqual(res2.parameters?.url, 'https://airline.example.com', 'URL parameter extracted');
+
+    // 3. Hugging Face text generation array format
+    const mockFetchHuggingFace = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [
+        {
+          generated_text: JSON.stringify({
+            action_id: 'act-hf-1',
+            observation_id: 'obs-uuid-1001',
+            action_type: 'DONE',
+            intended_effect: 'Task complete on HF model',
+          }),
+        },
+      ],
+    });
+
+    const p3 = new HttpReasoningProvider({ endpoint: 'https://mock.api/v1', fetchFn: mockFetchHuggingFace as any });
+    const g3 = new ReasoningGateway({ provider: p3 });
+    const res3 = await g3.proposeAction(obs, 'Done');
+    assertEqual(res3.action_type, 'DONE', 'Extracted from HuggingFace array format');
+  });
+
+  // E. Valid model JSON becomes a valid ActionProposal
+  await test('E. Valid model JSON becomes a valid ActionProposal with all fields preserved', async () => {
+    const mockFetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({
+                action_id: 'act-valid-type-01',
+                observation_id: 'obs-uuid-1001',
+                action_type: 'TYPE',
+                target_id: 'input-dest',
+                parameters: { text: 'Tokyo Narita' },
+                intended_effect: 'Fill destination airport',
+                confidence: 0.97,
+              }),
+            },
+          },
+        ],
+      }),
+    });
+
+    const provider = new HttpReasoningProvider({ endpoint: 'https://mock.api/v1', fetchFn: mockFetch as any });
+    const gateway = new ReasoningGateway({ provider });
+    const obs = createValidSanitizedObservation();
+
+    const proposal = await gateway.proposeAction(obs, 'Fill destination');
+    assertEqual(proposal.action_id, 'act-valid-type-01', 'action_id preserved');
+    assertEqual(proposal.observation_id, 'obs-uuid-1001', 'observation_id preserved');
+    assertEqual(proposal.action_type, 'TYPE', 'action_type matches TYPE');
+    assertEqual(proposal.target_id, 'input-dest', 'target_id matches input-dest');
+    assertEqual(proposal.parameters?.text, 'Tokyo Narita', 'parameters.text preserved');
+    assertEqual(proposal.intended_effect, 'Fill destination airport', 'intended_effect preserved');
+    assertEqual(proposal.confidence, 0.97, 'confidence preserved');
+  });
+
+  // F. Malformed model output fails closed
+  await test('F. Malformed model output fails closed (unparseable non-JSON text)', async () => {
+    const mockFetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'I am a chatbot and I cannot browse the web for you: [broken json}',
+            },
+          },
+        ],
+      }),
+    });
+
+    const provider = new HttpReasoningProvider({ endpoint: 'https://mock.api/v1', fetchFn: mockFetch as any });
+    const gateway = new ReasoningGateway({ provider });
+    const obs = createValidSanitizedObservation();
+
+    let caught = false;
+    try {
+      await gateway.proposeAction(obs, 'Search');
+    } catch (err) {
+      caught = err instanceof MalformedModelResponseError;
+    }
+    assert(caught, 'Malformed model text must throw MalformedModelResponseError');
+  });
+
+  // G. Invalid action_type fails closed
+  await test('G. Invalid action_type fails closed (unsupported action outside VEIL schema)', async () => {
+    const mockFetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({
+                action_id: 'act-bad-type',
+                observation_id: 'obs-uuid-1001',
+                action_type: 'RUN_TERMINAL_COMMAND',
+                intended_effect: 'Execute shell',
+              }),
+            },
+          },
+        ],
+      }),
+    });
+
+    const provider = new HttpReasoningProvider({ endpoint: 'https://mock.api/v1', fetchFn: mockFetch as any });
+    const gateway = new ReasoningGateway({ provider });
+    const obs = createValidSanitizedObservation();
+
+    let caught = false;
+    try {
+      await gateway.proposeAction(obs, 'Search');
+    } catch (err) {
+      caught = err instanceof InvalidActionProposalError;
+    }
+    assert(caught, 'Unsupported action_type must throw InvalidActionProposalError');
+  });
+
+  // H. Invalid target_id fails closed
+  await test('H. Invalid target_id fails closed (phantom target_id not in observation nodes)', async () => {
+    const mockFetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({
+                action_id: 'act-phantom',
+                observation_id: 'obs-uuid-1001',
+                action_type: 'CLICK',
+                target_id: 'invented-target-not-in-dom',
+                intended_effect: 'Click invented element',
+              }),
+            },
+          },
+        ],
+      }),
+    });
+
+    const provider = new HttpReasoningProvider({ endpoint: 'https://mock.api/v1', fetchFn: mockFetch as any });
+    const gateway = new ReasoningGateway({ provider, validateTargetExistsInObservation: true });
+    const obs = createValidSanitizedObservation();
+
+    let caught = false;
+    try {
+      await gateway.proposeAction(obs, 'Search');
+    } catch (err) {
+      caught = err instanceof InvalidActionProposalError;
+    }
+    assert(caught, 'Invented target_id must throw InvalidActionProposalError');
+  });
+
+  // I. observation_id mismatch fails closed
+  await test('I. observation_id mismatch fails closed (stale or mismatched observation ID)', async () => {
+    const mockFetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({
+                action_id: 'act-mismatch',
+                observation_id: 'obs-uuid-STALE-OLD',
+                action_type: 'CLICK',
+                target_id: 'btn-search',
+                intended_effect: 'Stale action execution',
+              }),
+            },
+          },
+        ],
+      }),
+    });
+
+    const provider = new HttpReasoningProvider({ endpoint: 'https://mock.api/v1', fetchFn: mockFetch as any });
+    const gateway = new ReasoningGateway({ provider });
+    const obs = createValidSanitizedObservation({ observation_id: 'obs-uuid-CURRENT-FRESH' });
+
+    let caught = false;
+    try {
+      await gateway.proposeAction(obs, 'Search');
+    } catch (err) {
+      caught = err instanceof ObservationIdMismatchError;
+    }
+    assert(caught, 'Mismatched observation_id must throw ObservationIdMismatchError');
+  });
+
+  // J. Provider HTTP/network/timeout failures fail closed
+  await test('J. Provider HTTP/network/timeout failures fail closed', async () => {
+    const obs = createValidSanitizedObservation();
+
+    // J1: HTTP 500 server error
+    const mockFetch500 = async () => ({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+      text: async () => 'Model service overloaded',
+    });
+    const p500 = new HttpReasoningProvider({ endpoint: 'https://mock.api/v1', fetchFn: mockFetch500 as any });
+    const g500 = new ReasoningGateway({ provider: p500 });
+    let caught500 = false;
+    try {
+      await g500.proposeAction(obs, 'Search');
+    } catch (err) {
+      caught500 = err instanceof ReasoningProviderError;
+    }
+    assert(caught500, 'HTTP 500 must throw ReasoningProviderError');
+
+    // J2: Network connection refused / fetch exception
+    const mockFetchNetworkFail = async () => {
+      throw new TypeError('Failed to fetch: Connection refused');
+    };
+    const pNet = new HttpReasoningProvider({ endpoint: 'https://mock.api/v1', fetchFn: mockFetchNetworkFail as any });
+    const gNet = new ReasoningGateway({ provider: pNet });
+    let caughtNet = false;
+    try {
+      await gNet.proposeAction(obs, 'Search');
+    } catch (err) {
+      caughtNet = err instanceof ReasoningProviderError;
+    }
+    assert(caughtNet, 'Network exception must throw ReasoningProviderError');
+
+    // J3: Timeout handling
+    const mockFetchTimeout = async (_input: any, init: any) => {
+      return new Promise((_, reject) => {
+        if (init.signal) {
+          init.signal.addEventListener('abort', () => {
+            const err = new Error('The operation was aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        }
+      });
+    };
+    const pTimeout = new HttpReasoningProvider({
+      endpoint: 'https://mock.api/v1',
+      fetchFn: mockFetchTimeout as any,
+      timeoutMs: 25,
+    });
+    const gTimeout = new ReasoningGateway({ provider: pTimeout });
+    let caughtTimeout = false;
+    try {
+      await gTimeout.proposeAction(obs, 'Search');
+    } catch (err) {
+      caughtTimeout = err instanceof ReasoningTimeoutError;
+    }
+    assert(caughtTimeout, 'Timeout must throw ReasoningTimeoutError');
   });
 
   return results;

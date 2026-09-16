@@ -118,6 +118,9 @@ export interface HttpReasoningProviderConfig {
   timeoutMs?: number;
   fetchFn?: typeof fetch;
   customHeaders?: Record<string, string>;
+  systemPrompt?: string;
+  temperature?: number;
+  format?: 'openai' | 'messages' | 'default';
 }
 
 /**
