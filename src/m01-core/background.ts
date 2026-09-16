@@ -1,8 +1,13 @@
 import { VeilOrchestrator } from './orchestrator';
+import { ReasoningGateway } from '../m09-reasoning/reasoningGateway';
+import { MockReasoningProvider } from '../m09-reasoning/providers/mockReasoningProvider';
 
 console.log('VEIL Service Worker initialized');
 
-const orchestrator = new VeilOrchestrator();
+// Configure M09 ReasoningGateway with MockReasoningProvider for autonomous prototype execution
+const reasoningProvider = new MockReasoningProvider();
+const reasoningGateway = new ReasoningGateway({ provider: reasoningProvider });
+const orchestrator = new VeilOrchestrator({ reasoningGateway });
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('VEIL Extension Installed');

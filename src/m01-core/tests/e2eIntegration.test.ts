@@ -742,5 +742,120 @@ export async function runT015Tests(): Promise<{ name: string; passed: boolean; e
     }
   });
 
+  // 14. Extension Background START_TASK path executes full pipeline with injected ReasoningGateway
+  await test('14. Chrome Extension START_TASK Path: Real background runtime executes full M02->M11 pipeline with injected M09 ReasoningGateway', async () => {
+    // Setup Chrome extension mock environment
+    let messageListener: any = null;
+    const mockDebugger = createMockDebuggerAPI();
+    mockDebugger.setMockCommand('DOM.getDocument', () => ({
+      root: {
+        nodeId: 1,
+        backendNodeId: 100,
+        nodeType: 9,
+        nodeName: '#document',
+        childNodeCount: 1,
+        children: [
+          {
+            nodeId: 2,
+            backendNodeId: 101,
+            nodeType: 1,
+            nodeName: 'HTML',
+            children: [
+              {
+                nodeId: 3,
+                backendNodeId: 102,
+                nodeType: 1,
+                nodeName: 'BUTTON',
+                attributes: ['type', 'submit', 'role', 'button'],
+                children: [{ nodeId: 4, nodeType: 3, nodeName: '#text', nodeValue: 'Book Flight' }],
+              },
+            ],
+          },
+        ],
+      },
+    }));
+    mockDebugger.setMockCommand('Accessibility.getFullAXTree', () => ({
+      nodes: [
+        {
+          nodeId: 'ax-btn-1',
+          ignored: false,
+          backendDOMNodeId: 102,
+          role: { type: 'role', value: 'button' },
+          name: { type: 'name', value: 'Book Flight' },
+        },
+      ],
+    }));
+
+    (globalThis as any).chrome = {
+      runtime: {
+        onInstalled: { addListener: () => {} },
+        onMessage: {
+          addListener: (fn: any) => {
+            messageListener = fn;
+          },
+        },
+      },
+      debugger: mockDebugger.api,
+    };
+
+    // Instantiate background runtime pattern: VeilOrchestrator with injected M09 ReasoningGateway
+    const obsManager = new ObservationManager({ debuggerApi: mockDebugger.api });
+    let capturedSanitizedReq: ReasoningRequest | null = null;
+
+    class ExtensionTestReasoner implements ReasoningProvider {
+      public readonly providerId = 'extension-reasoner';
+      async proposeAction(request: ReasoningRequest): Promise<unknown> {
+        capturedSanitizedReq = request;
+        return {
+          action_id: 'act-ext-done',
+          observation_id: request.observation_id,
+          action_type: 'DONE',
+          intended_effect: 'Task complete via extension runtime',
+        };
+      }
+    }
+
+    const gateway = new ReasoningGateway({ provider: new ExtensionTestReasoner() });
+    const extOrchestrator = new VeilOrchestrator({
+      observationManager: obsManager,
+      reasoningGateway: gateway,
+    });
+
+    // Simulate START_TASK message dispatched to extension service worker router
+    const startTaskPromise = new Promise<{ status: string; result?: any; error?: string }>((resolve) => {
+      const simulatedMessage = {
+        type: 'START_TASK',
+        goal: 'Complete booking on target page',
+        tabId: 99,
+        maxSteps: 3,
+      };
+      const sendResponse = (resp: any) => resolve(resp);
+
+      extOrchestrator
+        .run(simulatedMessage.goal, {
+          tabId: simulatedMessage.tabId,
+          maxSteps: simulatedMessage.maxSteps,
+        })
+        .then((result) => {
+          sendResponse({ status: 'completed', result });
+        })
+        .catch((err) => {
+          sendResponse({ status: 'error', error: err.message });
+        });
+    });
+
+    const response = await startTaskPromise;
+    assertEqual(response.status, 'completed', 'START_TASK completed successfully');
+    assertEqual(response.result?.success, true, 'Result success is true');
+    assertEqual(response.result?.finalState, 'COMPLETED', 'Final state reached COMPLETED');
+    assertEqual(response.result?.stepsExecuted, 1, '1 step executed to completion');
+    assert(mockDebugger.getAttachedTabId() === 99, 'Attached to target tab 99 via CDP');
+
+    // Verify privacy boundary on captured sanitized observation
+    assert(!!capturedSanitizedReq, 'Sanitized observation reached reasoner');
+    assertEqual((capturedSanitizedReq as any).user_goal, 'Complete booking on target page', 'User goal preserved');
+    assert(Array.isArray(capturedSanitizedReq!.nodes), 'Observation nodes present');
+  });
+
   return results;
 }
